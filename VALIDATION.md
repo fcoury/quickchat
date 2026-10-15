@@ -11,13 +11,14 @@ Built on Apple Silicon, macOS 26.7.1, Xcode 27.0, Swift 6.4. Deployment target: 
 - A real streamed rewrite completed and was saved locally.
 - A real hosted web search displayed “Searching the web…” and completed with a clickable Apple documentation link. The source link remained in the saved message.
 - History sidebar and new-chat keyboard commands exercised in the native app. Sign-in and both live chats survived restarting into a release build.
+- After Felipe approved Keychain access, Command–V attached his macOS clipboard screenshot with a 928 × 445 preview. Felipe confirmed paste and submission, and the completed model answer correctly read the text in the image.
 - An earlier release's idle physical footprint was sampled at 31.5 MB. This is a single observation, not a memory ceiling or a performance benchmark. The final executable is about 1.9 MB.
 
 ## Screenshot fix and remaining checks
 
-Felipe reported that pasting a macOS screenshot did nothing. Native menu inspection confirmed Paste was disabled for an image-only clipboard because AppKit treated the composer as a plain-text editor. The fix overrides command validation and handles PNG/TIFF data explicitly. Copied image files are also accepted. The regression tests pass; a final end-to-end screenshot preview and model answer still need a manual check.
+Felipe reported that pasting a macOS screenshot did nothing. Native menu inspection confirmed Paste was disabled for an image-only clipboard because AppKit treated the composer as a plain-text editor. The fix overrides command validation and handles PNG/TIFF data explicitly. Copied image files are also accepted. The regression tests and the live screenshot preview, submission, and model-answer check now pass.
 
-The restarted locally signed app is waiting for macOS Keychain approval. macOS can request this again when an ad-hoc signed executable changes. Enter a Mac password only into the macOS dialog, never into chat. The delivered bundle includes the final fix and tests; a running earlier build should be quit and reopened before that final check.
+Keychain access was approved and sign-in remained intact. macOS can request access again when an ad-hoc signed executable changes. The native screenshot check used the release process containing the paste fix, launched before the final testability-only change that injects an isolated pasteboard into regression tests. The delivered bundle defaults to the same system clipboard and includes that change; its signature and executable checksum were verified separately.
 
 The automated runner initially lacked pasteboard-service access in its shell sandbox. The already-built test bundle was run directly with `xcrun xctest .build/out/Products/Debug/QuickChatCoreTests.xctest` outside that sandbox, using its isolated pasteboard: **11 tests, 0 failures**. A separate Swift SDK stat-cache helper stalled outside the sandbox and was stopped; rebuilding inside the sandbox succeeded.
 
@@ -25,7 +26,7 @@ The automated runner initially lacked pasteboard-service access in its shell san
 
 - Global shortcut behavior across fullscreen Spaces and multiple monitors, shortcut-to-focused-input p95, and extended resource usage.
 - Live token expiry/renewal, remote revocation, account switching, and real usage-limit responses. The relevant handling is implemented but not yet exercised end to end.
-- Screenshot inference after the native paste fix, copied image files in Finder, and image input across every available model.
+- Copied image files in Finder and image input across every available model. Live screenshot inference was verified with GPT-6.1-Sol.
 - Public distribution, notarization, auto-updates, Intel Mac testing, or launch-at-login behavior.
 
 No repository was published and no remote PR was created. Test chats remain local so Felipe can review the live results.
