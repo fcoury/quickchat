@@ -28,6 +28,7 @@ For development:
 - **Return** sends. **Shift–Return** inserts a newline.
 - **Escape** hides the panel and returns focus to the previous app. An active response continues; use Stop to cancel it.
 - **Command–N** starts a chat, including from Settings. **Command–B** toggles searchable history. **Command–Comma** opens settings.
+- **Command–Plus** (or **Command–Equals**) enlarges chat text, **Command–Minus** makes it smaller, and **Command–0** resets it. Messages, code, and the composer resize together. The size is saved across chats and restarts, from 12 to 26 points with a 15-point default.
 - Settings opens inside the chat panel; **Escape** or the back arrow returns to your chat with its draft intact. Startup opens only the chat panel.
 - **Keep QuickChat on top** in Settings defaults to off. It applies immediately and is saved for the app, across new chats, switching chats, and restarts.
 - **Command–V** pastes text or screenshots into the composer. Preview or remove a screenshot before sending. Up to four images per message, 20 MB per image, and 50 megapixels per image.

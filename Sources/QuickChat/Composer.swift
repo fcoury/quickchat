@@ -4,6 +4,7 @@ import SwiftUI
 struct ComposerEditor: NSViewRepresentable {
     @Binding var text: String
     var focus: UUID
+    var fontSize: CGFloat
     var onSend: () -> Void
     var onImage: (NSImage) -> Void
     var onPasteError: (String) -> Void
@@ -15,7 +16,7 @@ struct ComposerEditor: NSViewRepresentable {
         editor.delegate = context.coordinator
         editor.isRichText = false; editor.drawsBackground = false; editor.isAutomaticQuoteSubstitutionEnabled = false
         editor.isAutomaticDashSubstitutionEnabled = false; editor.isAutomaticSpellingCorrectionEnabled = false
-        editor.font = .systemFont(ofSize: 15); editor.textColor = .white; editor.insertionPointColor = .white
+        editor.font = .systemFont(ofSize: fontSize); editor.textColor = .white; editor.insertionPointColor = .white
         editor.textContainerInset = NSSize(width: 0, height: 4)
         editor.textContainer?.lineFragmentPadding = 0
         editor.isVerticallyResizable = true; editor.isHorizontallyResizable = false
@@ -30,6 +31,7 @@ struct ComposerEditor: NSViewRepresentable {
         guard let editor = scroll.documentView as? PasteTextView else { return }
         context.coordinator.parent = self
         if editor.string != text { editor.string = text }
+        if editor.font?.pointSize != fontSize { editor.font = .systemFont(ofSize: fontSize) }
         editor.onSend = onSend; editor.onImage = onImage; editor.onPasteError = onPasteError
         if context.coordinator.lastFocus != focus {
             context.coordinator.lastFocus = focus

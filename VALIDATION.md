@@ -4,8 +4,8 @@ Built on Apple Silicon, macOS 26.7.1, Xcode 27.0, Swift 6.4. Deployment target: 
 
 ## Passed
 
-- Production build and strict code-signature verification. Delivered executable SHA-256: `1f0031ef14eba503c45ceb29d20c9fef24eae81d3823e7f9198024bea69e6310`.
-- Eleven automated tests, including real RSA signature verification/tampering, PKCE, callback state/account mismatch/duplicate rejection, stream framing and terminal failures, Unicode citations, request history with image data, owner-only local persistence, and interrupted response recovery.
+- Production build and strict code-signature verification. Delivered executable SHA-256: `979ae01300f2035c5f99ed6755862fb43885311e55df97edc580a5697c3f8811`.
+- Twelve automated tests, including real RSA signature verification/tampering, PKCE, callback state/account mismatch/duplicate rejection, stream framing and terminal failures, Unicode citations, request history with image data, owner-only local persistence, interrupted response recovery, and font shortcut modifiers/bounds/persistence.
 - Native AppKit regression: an isolated image-only PNG pasteboard enables Paste in the plain-text composer and invokes the image attachment callback. Empty/unsupported content produces a visible error. The test never reads or replaces the user's general clipboard.
 - Personal ChatGPT Pro sign-in completed by Felipe in the system browser. The native app received the account's model catalog and selected GPT-6.1-Sol.
 - A real streamed rewrite completed and was saved locally.
@@ -40,3 +40,13 @@ Native checks confirmed launch into the chat panel, opening Settings with both t
 The final release was reopened and its complete settings layout inspected at 680 × 520. Command–N directly from Settings opened a new chat with the composer focused and retained the enabled on-top preference. The setting was then switched off. All 11 tests passed again after the changes. The native settings screenshot in the deliverables was captured from this release. Restart persistence and draft checks ran before the final layout/Command–N refinements; fullscreen and multiple-monitor behavior remain outside this check.
 
 Repeated Keychain prompts during development were traced to ad-hoc signing: the current designated requirement identifies the executable by its code hash. No valid code-signing identity was available on this Mac when checked. Felipe approved the final build's Keychain prompt. A stable signing certificate is still needed to avoid changing this identity with each rebuild.
+
+## Chat font-size update
+
+Command–Plus (including Shift–Command–Plus) and Command–Equals increase chat text by one point; Command–Minus decreases it and Command–0 restores 15 points. The saved app-wide range is 12–26 points. Messages, code blocks, composer text, and its placeholder use the selected size. The shortcuts leave ordinary typing, Option/Control combinations, Settings, and shortcut recording alone.
+
+The added regression test uses an isolated preferences suite and checks actual AppKit key events, shifted plus, Caps Lock/keypad modifiers, settings exclusion, clamping, reset, and persistence through state recreation. All 12 tests passed, and the release build succeeded.
+
+Native checks exercised Command–Equals, Shift–Command–Plus, and Command–Minus in the focused composer. Transcript text and the placeholder resized visibly; the saved 18-point setting survived reopening the final release. Reset and bounds were verified by the regression test. Code-block resizing was compiled and reviewed but not separately exercised with a live code response.
+
+Felipe also reported that the top-left corner of an assistant answer was cut off. The message container applied a rounded clipping mask to unpadded assistant text. Rounded corners now apply only to the background shape. The final release was visually checked with the reported “Bureaucracy.” answer: its first letter is intact, and the user bubble remains rounded.

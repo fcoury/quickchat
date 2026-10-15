@@ -11,17 +11,39 @@ enum Theme {
 }
 
 @MainActor final class WindowState: ObservableObject {
+    private let defaults: UserDefaults
     @Published var historyVisible = false
     @Published var settingsVisible = false
-    @Published var keepOnTop = UserDefaults.standard.bool(forKey: "keepOnTop") {
+    @Published private(set) var chatFontSize: CGFloat
+    @Published var keepOnTop: Bool {
         didSet {
-            UserDefaults.standard.set(keepOnTop, forKey: "keepOnTop")
+            defaults.set(keepOnTop, forKey: "keepOnTop")
             updateWindowLevel?(keepOnTop)
         }
     }
     var toggleHistory: (() -> Void)?
     var dismiss: (() -> Void)?
     var updateWindowLevel: ((Bool) -> Void)?
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        keepOnTop = defaults.bool(forKey: "keepOnTop")
+        let savedSize = defaults.object(forKey: "chatFontSize") as? Double ?? 15
+        chatFontSize = savedSize.isFinite ? min(26, max(12, CGFloat(savedSize))) : 15
+    }
+    func handleFontSizeShortcut(_ event: NSEvent) -> Bool {
+        guard !settingsVisible,
+              event.modifierFlags.intersection([.command, .control, .option]) == .command else { return false }
+        let size: CGFloat
+        switch event.charactersIgnoringModifiers {
+        case "+", "=": size = chatFontSize + 1
+        case "-": size = chatFontSize - 1
+        case "0": size = 15
+        default: return false
+        }
+        chatFontSize = min(26, max(12, size))
+        defaults.set(Double(chatFontSize), forKey: "chatFontSize")
+        return true
+    }
 }
 
 struct RootView: View {
@@ -61,7 +83,7 @@ struct RootView: View {
                 Rectangle().fill(Theme.border).frame(height: 1)
                 if store.current?.messages.isEmpty != false {
                     welcome
-                } else { TranscriptView(store: store, auth: auth) }
+                } else { TranscriptView(store: store, auth: auth, fontSize: window.chatFontSize) }
                 if let error = store.error ?? auth.error ?? hotkey.error {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
@@ -123,8 +145,8 @@ struct RootView: View {
             }
             HStack(alignment: .bottom, spacing: 12) {
                 ZStack(alignment: .topLeading) {
-                    if store.current?.draft.isEmpty != false { Text("Ask anything, or paste a screenshot…").foregroundStyle(Theme.muted).font(.system(size: 15)).padding(.top, 4).allowsHitTesting(false) }
-                    ComposerEditor(text: Binding(get: { store.current?.draft ?? "" }, set: store.setDraft), focus: store.focusRequest,
+                    if store.current?.draft.isEmpty != false { Text("Ask anything, or paste a screenshot…").foregroundStyle(Theme.muted).font(.system(size: window.chatFontSize)).padding(.top, 4).allowsHitTesting(false) }
+                    ComposerEditor(text: Binding(get: { store.current?.draft ?? "" }, set: store.setDraft), focus: store.focusRequest, fontSize: window.chatFontSize,
                         onSend: { store.send(auth: auth) }, onImage: store.attach, onPasteError: { store.error = $0 })
                 }.frame(height: composerHeight)
                 Button { if store.busy { store.stop() } else { store.send(auth: auth) } } label: {
@@ -136,7 +158,7 @@ struct RootView: View {
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.border, lineWidth: 1)).padding(.horizontal, 18)
     }
     private var canSend: Bool { (!((store.current?.draft ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || !(store.current?.draftAttachments.isEmpty ?? true)) && (auth.connected || store.demo) && !store.models.isEmpty }
-    private var composerHeight: CGFloat { min(132, max(46, CGFloat((store.current?.draft.components(separatedBy: "\n").count ?? 1) * 20 + 8))) }
+    private var composerHeight: CGFloat { min(132, max(46, CGFloat(store.current?.draft.components(separatedBy: "\n").count ?? 1) * (window.chatFontSize + 5) + 8)) }
     private var footer: some View {
         HStack(spacing: 9) {
             Circle().fill(store.demo ? Color.orange : (auth.connected ? Color.green : Theme.muted)).frame(width: 6, height: 6)
@@ -200,13 +222,14 @@ struct HistoryView: View {
 struct TranscriptView: View {
     @ObservedObject var store: ChatStore
     @ObservedObject var auth: AuthService
+    let fontSize: CGFloat
     @State private var atBottom = true
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 26) {
                     ForEach(store.current?.messages ?? []) { message in
-                        MessageView(message: message, history: store.history, canRetry: message.id == store.current?.messages.last?.id && !store.busy,
+                        MessageView(message: message, history: store.history, fontSize: fontSize, canRetry: message.id == store.current?.messages.last?.id && !store.busy,
                             searching: store.searching && store.runningID == store.selectedID) { store.retry(auth: auth) }
                     }
                     Color.clear.frame(height: 1).id("bottom").onAppear { atBottom = true }.onDisappear { atBottom = false }
@@ -222,6 +245,7 @@ struct TranscriptView: View {
 struct MessageView: View {
     let message: Message
     let history: HistoryStore
+    let fontSize: CGFloat
     let canRetry: Bool
     let searching: Bool
     var retry: () -> Void
@@ -235,7 +259,7 @@ struct MessageView: View {
                         AttachmentThumbnail(attachment: image, history: history).frame(maxWidth: 180, maxHeight: 120).onTapGesture { NSWorkspace.shared.open(history.imageURL(image)) }
                     } }
                 }
-                if !message.text.isEmpty { MarkdownText(text: message.displayText) }
+                if !message.text.isEmpty { MarkdownText(text: message.displayText, fontSize: fontSize) }
                 if message.status == .streaming {
                     HStack(spacing: 8) { ProgressView().controlSize(.small); Text(searching ? "Searching the web…" : message.text.isEmpty ? "Thinking…" : "Writing…").font(.system(size: 12)).foregroundStyle(Theme.muted) }
                 }
@@ -254,7 +278,7 @@ struct MessageView: View {
                     }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.muted).padding(.top, 2)
                 }
             }.padding(message.role == "user" ? 14 : 0)
-                .background(message.role == "user" ? Theme.surface : .clear).clipShape(RoundedRectangle(cornerRadius: 14))
+                .background(message.role == "user" ? Theme.surface : .clear, in: RoundedRectangle(cornerRadius: 14))
             if message.role != "user" { Spacer(minLength: 0) }
         }.frame(maxWidth: .infinity, alignment: message.role == "user" ? .trailing : .leading)
     }
@@ -287,6 +311,7 @@ struct AttachmentThumbnail: View {
 
 struct MarkdownText: View {
     let text: String
+    let fontSize: CGFloat
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(text.components(separatedBy: "```").enumerated()), id: \.offset) { index, part in
@@ -295,11 +320,11 @@ struct MarkdownText: View {
                     let code = lines.dropFirst().joined(separator: "\n").trimmingCharacters(in: .newlines)
                     VStack(alignment: .leading, spacing: 8) {
                         HStack { Text(lines.first ?? "code"); Spacer(); Button { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(code, forType: .string) } label: { Image(systemName: "doc.on.doc") }.buttonStyle(.plain).help("Copy code") }.font(.system(size: 10)).foregroundStyle(Theme.muted)
-                        ScrollView(.horizontal) { Text(code).font(.system(size: 12, design: .monospaced)).textSelection(.enabled).fixedSize(horizontal: true, vertical: true) }
+                        ScrollView(.horizontal) { Text(code).font(.system(size: max(10, fontSize * 0.8), design: .monospaced)).textSelection(.enabled).fixedSize(horizontal: true, vertical: true) }
                     }.padding(12).background(.black.opacity(0.23)).clipShape(RoundedRectangle(cornerRadius: 8))
                 } else if !part.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text((try? AttributedString(markdown: part.trimmingCharacters(in: .newlines), options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(part))
-                        .font(.system(size: 15)).lineSpacing(5).textSelection(.enabled).tint(Color(red: 0.58, green: 0.76, blue: 0.95)).frame(maxWidth: .infinity, alignment: .leading)
+                        .font(.system(size: fontSize)).lineSpacing(fontSize / 3).textSelection(.enabled).tint(Color(red: 0.58, green: 0.76, blue: 0.95)).frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }

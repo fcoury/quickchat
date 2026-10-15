@@ -55,6 +55,7 @@ final class ChatPanel: NSPanel {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.panel.isKeyWindow else { return event }
             if let recorder = self.panel.firstResponder as? RecorderButton, recorder.recording { return event }
+            if self.state.handleFontSizeShortcut(event) { return nil }
             if event.keyCode == 53 {
                 if self.state.settingsVisible { self.state.settingsVisible = false; self.store.focusRequest = UUID() }
                 else { self.hide() }
