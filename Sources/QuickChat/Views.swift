@@ -233,7 +233,7 @@ struct TranscriptView: View {
                             searching: store.searching && store.runningID == store.selectedID) { store.retry(auth: auth) }
                     }
                     Color.clear.frame(height: 1).id("bottom").onAppear { atBottom = true }.onDisappear { atBottom = false }
-                }.padding(26)
+                }.frame(maxWidth: 960).padding(26).frame(maxWidth: .infinity)
             }.onChange(of: store.current?.messages.last?.text) { _, _ in if atBottom { proxy.scrollTo("bottom", anchor: .bottom) } }
                 .onChange(of: store.current?.messages.count) { _, _ in proxy.scrollTo("bottom", anchor: .bottom) }
                 .onChange(of: store.selectedID) { _, _ in proxy.scrollTo("bottom", anchor: .bottom) }
@@ -259,7 +259,11 @@ struct MessageView: View {
                         AttachmentThumbnail(attachment: image, history: history).frame(maxWidth: 180, maxHeight: 120).onTapGesture { NSWorkspace.shared.open(history.imageURL(image)) }
                     } }
                 }
-                if !message.text.isEmpty { MarkdownText(text: message.displayText, fontSize: fontSize) }
+                if !message.text.isEmpty {
+                    if message.role == "user" {
+                        Text(message.text).font(.system(size: fontSize)).lineSpacing(fontSize / 3).textSelection(.enabled)
+                    } else { MarkdownText(text: message.displayText, fontSize: fontSize).equatable() }
+                }
                 if message.status == .streaming {
                     HStack(spacing: 8) { ProgressView().controlSize(.small); Text(searching ? "Searching the web…" : message.text.isEmpty ? "Thinking…" : "Writing…").font(.system(size: 12)).foregroundStyle(Theme.muted) }
                 }
@@ -306,28 +310,6 @@ struct AttachmentThumbnail: View {
                     return NSImage(cgImage: cg, size: .zero)
                 }.value
             }
-    }
-}
-
-struct MarkdownText: View {
-    let text: String
-    let fontSize: CGFloat
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(text.components(separatedBy: "```").enumerated()), id: \.offset) { index, part in
-                if index % 2 == 1 {
-                    let lines = part.components(separatedBy: "\n")
-                    let code = lines.dropFirst().joined(separator: "\n").trimmingCharacters(in: .newlines)
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack { Text(lines.first ?? "code"); Spacer(); Button { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(code, forType: .string) } label: { Image(systemName: "doc.on.doc") }.buttonStyle(.plain).help("Copy code") }.font(.system(size: 10)).foregroundStyle(Theme.muted)
-                        ScrollView(.horizontal) { Text(code).font(.system(size: max(10, fontSize * 0.8), design: .monospaced)).textSelection(.enabled).fixedSize(horizontal: true, vertical: true) }
-                    }.padding(12).background(.black.opacity(0.23)).clipShape(RoundedRectangle(cornerRadius: 8))
-                } else if !part.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text((try? AttributedString(markdown: part.trimmingCharacters(in: .newlines), options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(part))
-                        .font(.system(size: fontSize)).lineSpacing(fontSize / 3).textSelection(.enabled).tint(Color(red: 0.58, green: 0.76, blue: 0.95)).frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-        }
     }
 }
 

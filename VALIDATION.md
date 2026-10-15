@@ -4,15 +4,15 @@ Built on Apple Silicon, macOS 26.7.1, Xcode 27.0, Swift 6.4. Deployment target: 
 
 ## Passed
 
-- Production build and strict code-signature verification. Delivered executable SHA-256: `d42ade17c3a6f2ea181bbdc2aa057fb288c454fb92c7c895f1ccc0d36b206293`.
-- Fourteen automated tests, including real RSA signature verification/tampering, PKCE, callback state/account mismatch/duplicate rejection, stream framing and terminal failures, Unicode citations, request history with image data, owner-only local persistence, interrupted response recovery, font shortcut modifiers/bounds/persistence, and draft/screenshot transfer to a new chat.
+- Production build and strict code-signature verification. Delivered executable SHA-256: `9cbd471d251fc4611dcf5ea7158f9135bd843c1157ebaf42f415db03d80fc123`.
+- Nineteen automated tests, including real RSA signature verification/tampering, PKCE, callback state/account mismatch/duplicate rejection, stream framing and terminal failures, Unicode citations, request history with image data, owner-only local persistence, interrupted response recovery, font shortcut modifiers/bounds/persistence, draft/screenshot transfer to a new chat, Markdown structure/source preservation, syntax coloring, and native layout at 15 and 26 points.
 - Native AppKit regression: an isolated image-only PNG pasteboard enables Paste in the plain-text composer and invokes the image attachment callback. Empty/unsupported content produces a visible error. The test never reads or replaces the user's general clipboard.
 - Personal ChatGPT Pro sign-in completed by Felipe in the system browser. The native app received the account's model catalog and selected GPT-6.1-Sol.
 - A real streamed rewrite completed and was saved locally.
 - A real hosted web search displayed “Searching the web…” and completed with a clickable Apple documentation link. The source link remained in the saved message.
 - History sidebar and new-chat keyboard commands exercised in the native app. Sign-in and both live chats survived restarting into a release build.
 - After Felipe approved Keychain access, Command–V attached his macOS clipboard screenshot with a 928 × 445 preview. Felipe confirmed paste and submission, and the completed model answer correctly read the text in the image.
-- An earlier release's idle physical footprint was sampled at 31.5 MB. This is a single observation, not a memory ceiling or a performance benchmark. The final executable is about 1.9 MB.
+- An earlier release's idle physical footprint was sampled at 31.5 MB. This is a single observation, not a memory ceiling or a performance benchmark. The final executable is about 2.4 MB.
 
 ## Screenshot fix and remaining checks
 
@@ -60,3 +60,13 @@ Two added regression tests use isolated temporary history stores. They check mul
 The show action no longer recenters a hidden window. It places the panel on first launch and only recenters later if the panel no longer intersects any available display. Position is retained for the current app session. Felipe confirmed dragging the release window and hiding/reopening it with his configured Shift–Command–K keeps it in place. The disconnected-monitor fallback has not been exercised on actual display hardware.
 
 The panel's non-activating style was removed so clicking it activates QuickChat and routes editing shortcuts to its composer. The native Select All check visibly selected the complete draft. Felipe also confirmed the original cross-app reproduction: click in Codex, click the QuickChat composer, and Command–A now selects QuickChat's text. The final release reopened with the saved sign-in, 18-point font, configured shortcut, and on-top preference intact. No inference request was needed for these fixes.
+
+## Markdown rendering update
+
+The former renderer only interpreted inline Markdown and split code on literal triple backticks. Foundation's full Markdown parser now supplies a native block tree for headings, paragraphs, nested ordered/unordered lists, quotes, dividers, tables, links, inline code, and fenced code. SwiftUI renders the blocks without a web view or additional dependencies. Short user messages fit their bubbles; wide windows cap the reply column at 960 points.
+
+Code blocks have a separated language/Copy header, larger monospace text, line spacing, a subtle border, and horizontal scrolling. A small lexical highlighter colors strings, comments, keywords, and numbers for common language tags. Unknown languages and blocks over 100,000 UTF-16 units use plain text. Highlighting changes no source characters, and copying uses the original code including whitespace. It is lexical coloring, not a language server or complete grammar for each language.
+
+Five added tests check headings and inline styles, nested lists and starting ordinals, quoted blocks, table structure/alignment and links, alternative/longer code fences and incomplete streaming fences, Unicode/source preservation, overlapping string/comment tokens, unknown-language/large-block fallbacks, and native SwiftUI layout at 640 points wide with both 15- and 26-point fonts. All 19 tests passed. The generated native previews were visually inspected for wrapping, code overflow, heading hierarchy, table layout, and spacing. These previews use a synthetic local fixture and make no inference requests. The release build and strict signature check passed.
+
+After Felipe approved the changed build's Keychain prompt, the final release reopened the saved code conversation. Native inspection confirmed semantic headings without literal `###`, colored Python/JavaScript snippets, the compact user bubble, and readable prose before and after code. The release screenshot is included in the deliverables. The original clipboard was not overwritten to test Copy; exact code preservation is covered by the parser/highlighter tests and the copy action passes that unchanged string to AppKit. Fullscreen/multiple-monitor behavior and extended performance measurements remain outside this rendering check.
