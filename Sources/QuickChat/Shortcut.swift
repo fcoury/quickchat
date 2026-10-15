@@ -26,8 +26,9 @@ struct Shortcut: Codable, Equatable {
     var action: (() -> Void)?
     private var hotkey: EventHotKeyRef?
     private var handler: EventHandlerRef?
-    init() {
-        shortcut = UserDefaults.standard.data(forKey: "shortcut").flatMap { try? JSONDecoder().decode(Shortcut.self, from: $0) } ?? .initial
+    init(preview: Bool = false) {
+        shortcut = preview ? .initial : UserDefaults.standard.data(forKey: "shortcut").flatMap { try? JSONDecoder().decode(Shortcut.self, from: $0) } ?? .initial
+        if preview { return }
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         InstallEventHandler(GetApplicationEventTarget(), { _, _, context in
             guard let context else { return OSStatus(eventNotHandledErr) }

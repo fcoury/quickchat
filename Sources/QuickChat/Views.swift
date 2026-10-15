@@ -14,6 +14,7 @@ enum Theme {
     private let defaults: UserDefaults
     @Published var historyVisible = false
     @Published var settingsVisible = false
+    @Published var scrollToBottomRequest = UUID()
     @Published private(set) var chatFontSize: CGFloat
     @Published var keepOnTop: Bool {
         didSet {
@@ -42,6 +43,19 @@ enum Theme {
         }
         chatFontSize = min(26, max(12, size))
         defaults.set(Double(chatFontSize), forKey: "chatFontSize")
+        return true
+    }
+    func handleHistoryShortcut(_ event: NSEvent) -> Bool {
+        guard !settingsVisible,
+              event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command,
+              event.charactersIgnoringModifiers?.lowercased() == "b" else { return false }
+        toggleHistory?()
+        return true
+    }
+    func handleLatestShortcut(_ event: NSEvent) -> Bool {
+        guard !settingsVisible, event.keyCode == 125,
+              event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command else { return false }
+        scrollToBottomRequest = UUID()
         return true
     }
 }
@@ -83,7 +97,7 @@ struct RootView: View {
                 Rectangle().fill(Theme.border).frame(height: 1)
                 if store.current?.messages.isEmpty != false {
                     welcome
-                } else { TranscriptView(store: store, auth: auth, fontSize: window.chatFontSize) }
+                } else { TranscriptView(store: store, auth: auth, window: window, fontSize: window.chatFontSize) }
                 if let error = store.error ?? auth.error ?? hotkey.error {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
@@ -93,7 +107,7 @@ struct RootView: View {
                 }
                 composer
                 footer
-            }.frame(minWidth: 560)
+            }.frame(minWidth: 0, maxWidth: .infinity)
         }
     }
     private var toolbar: some View {
@@ -162,17 +176,22 @@ struct RootView: View {
     private var footer: some View {
         HStack(spacing: 9) {
             Circle().fill(store.demo ? Color.orange : (auth.connected ? Color.green : Theme.muted)).frame(width: 6, height: 6)
-            Button { window.settingsVisible = true } label: { Text(store.demo ? "Preview · no network" : auth.connected ? "Using ChatGPT plan" : "Connect ChatGPT") }.buttonStyle(.plain)
+            Button { window.settingsVisible = true } label: { Text(store.demo ? "Preview · no network" : auth.connected ? "Using ChatGPT plan" : "Connect ChatGPT") }.buttonStyle(.plain).fixedSize()
             Menu {
                 Button { store.setSearch(true) } label: { Label("Auto", systemImage: store.current?.searchEnabled == true ? "checkmark" : "globe") }
                 Button { store.setSearch(false) } label: { Label("Off", systemImage: store.current?.searchEnabled == false ? "checkmark" : "minus") }
             } label: { Label(store.current?.searchEnabled == true ? "Auto" : "Off", systemImage: "globe") }
                 .menuStyle(.borderlessButton).fixedSize().help("Web search").disabled(store.busy)
             Spacer(minLength: 4)
-            Text("⌘N").font(.system(size: 10, design: .monospaced)).padding(.horizontal, 4).padding(.vertical, 2).background(.white.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 3))
-            Text("New chat")
-            Text("esc").font(.system(size: 10, design: .monospaced)).padding(.horizontal, 4).padding(.vertical, 2).background(.white.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 3))
-            Text("Close")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 9) {
+                    Text("⌘N").font(.system(size: 10, design: .monospaced)).padding(.horizontal, 4).padding(.vertical, 2).background(.white.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 3))
+                    Text("New chat")
+                    Text("esc").font(.system(size: 10, design: .monospaced)).padding(.horizontal, 4).padding(.vertical, 2).background(.white.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 3))
+                    Text("Close")
+                }
+                Text("⌘N · esc").font(.system(size: 10, design: .monospaced)).help("Command–N: New chat · Escape: Close")
+            }
         }.font(.system(size: 11)).foregroundStyle(Theme.muted).padding(.horizontal, 23).frame(height: 38)
     }
 }
@@ -222,22 +241,60 @@ struct HistoryView: View {
 struct TranscriptView: View {
     @ObservedObject var store: ChatStore
     @ObservedObject var auth: AuthService
+    @ObservedObject var window: WindowState
     let fontSize: CGFloat
     @State private var atBottom = true
+    @State private var previousFrame: CGRect?
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 26) {
-                    ForEach(store.current?.messages ?? []) { message in
-                        MessageView(message: message, history: store.history, fontSize: fontSize, canRetry: message.id == store.current?.messages.last?.id && !store.busy,
-                            searching: store.searching && store.runningID == store.selectedID) { store.retry(auth: auth) }
+        GeometryReader { viewport in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        LazyVStack(alignment: .leading, spacing: 26) {
+                            ForEach(store.current?.messages ?? []) { message in
+                                MessageView(message: message, history: store.history, fontSize: fontSize, canRetry: message.id == store.current?.messages.last?.id && !store.busy,
+                                    searching: store.searching && store.runningID == store.selectedID) { store.retry(auth: auth) }
+                            }
+                        }
+                        .frame(maxWidth: 960).padding(.horizontal, 26).padding(.top, 26).frame(maxWidth: .infinity)
+                        // Keep the destination outside the lazy stack so its frame includes final layout and bottom padding.
+                        Color.clear.frame(height: 26).id("bottom")
                     }
-                    Color.clear.frame(height: 1).id("bottom").onAppear { atBottom = true }.onDisappear { atBottom = false }
-                }.frame(maxWidth: 960).padding(26).frame(maxWidth: .infinity)
-            }.onChange(of: store.current?.messages.last?.text) { _, _ in if atBottom { proxy.scrollTo("bottom", anchor: .bottom) } }
+                    .onGeometryChange(for: CGRect.self) { geometry in
+                        geometry.frame(in: .named("transcript"))
+                    } action: { frame in
+                        let heightChanged = previousFrame?.height != frame.height
+                        let scrolledUp = previousFrame.map { frame.minY > $0.minY + 1 } ?? false
+                        let followGrowth = atBottom && heightChanged && !scrolledUp
+                        previousFrame = frame
+                        atBottom = followGrowth || frame.maxY <= viewport.size.height + 32
+                        // Follow the laid-out answer as it grows, but let an upward scroll leave the bottom.
+                        if followGrowth { proxy.scrollTo("bottom", anchor: .bottom) }
+                    }
+                }
+                .coordinateSpace(name: "transcript")
+                .overlay(alignment: .bottom) {
+                    if !atBottom {
+                        Button { window.scrollToBottomRequest = UUID() } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.down")
+                                Text("Latest").fontWeight(.medium)
+                                Text("⌘↓").foregroundStyle(Theme.muted)
+                            }.font(.system(size: 12)).padding(.horizontal, 13).padding(.vertical, 8)
+                                .background(Theme.surface, in: Capsule())
+                                .overlay(Capsule().stroke(Theme.border, lineWidth: 1))
+                                .shadow(color: .black.opacity(0.3), radius: 8, y: 3)
+                        }.buttonStyle(.plain).help("Jump to latest message (⌘↓)")
+                            .accessibilityLabel("Jump to latest message").padding(.bottom, 10)
+                    }
+                }
+                .onChange(of: window.scrollToBottomRequest) { _, _ in
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
                 .onChange(of: store.current?.messages.count) { _, _ in proxy.scrollTo("bottom", anchor: .bottom) }
                 .onChange(of: store.selectedID) { _, _ in proxy.scrollTo("bottom", anchor: .bottom) }
                 .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
         }
     }
 }

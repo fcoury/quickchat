@@ -16,7 +16,7 @@ final class ChatPanel: NSPanel {
     override var canBecomeMain: Bool { true }
 }
 
-@MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+@MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
     private var statusItem: NSStatusItem!
     private var panel: ChatPanel!
     private var store: ChatStore!
@@ -35,7 +35,7 @@ final class ChatPanel: NSPanel {
         }
         NSApp.setActivationPolicy(.accessory)
         let demo = CommandLine.arguments.contains("--demo")
-        store = ChatStore(demo: demo); auth = AuthService(preview: demo); hotkey = GlobalShortcut()
+        store = ChatStore(demo: demo); auth = AuthService(preview: demo); hotkey = GlobalShortcut(preview: demo)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: "QuickChat")
         statusItem.button?.target = self; statusItem.button?.action = #selector(statusClicked)
@@ -51,6 +51,10 @@ final class ChatPanel: NSPanel {
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
         panel.isMovableByWindowBackground = true; panel.hidesOnDeactivate = false
         panel.contentView = NSHostingView(rootView: RootView(store: store, auth: auth, window: state, hotkey: hotkey))
+        if !demo {
+            positionedPanel = panel.setFrameUsingName("QuickChatPanel")
+            panel.setFrameAutosaveName("QuickChatPanel")
+        }
         state.dismiss = { [weak self] in self?.hide() }
         state.toggleHistory = { [weak self] in self?.toggleHistory() }
         hotkey.action = { [weak self] in self?.toggle() }
@@ -58,6 +62,8 @@ final class ChatPanel: NSPanel {
             guard let self, self.panel.isKeyWindow else { return event }
             if let recorder = self.panel.firstResponder as? RecorderButton, recorder.recording { return event }
             if self.state.handleFontSizeShortcut(event) { return nil }
+            if self.state.handleHistoryShortcut(event) { return nil }
+            if self.state.handleLatestShortcut(event) { return nil }
             if event.keyCode == 53 {
                 if self.state.settingsVisible { self.state.settingsVisible = false; self.store.focusRequest = UUID() }
                 else { self.hide() }
@@ -66,7 +72,6 @@ final class ChatPanel: NSPanel {
             if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command {
                 switch event.charactersIgnoringModifiers {
                 case "n": self.state.settingsVisible = false; self.store.newChat(); return nil
-                case "b" where !self.state.settingsVisible: self.toggleHistory(); return nil
                 case ",": self.state.settingsVisible = true; return nil
                 case "w": self.hide(); return nil
                 case "q": NSApp.terminate(nil); return nil
@@ -83,7 +88,11 @@ final class ChatPanel: NSPanel {
         for (title, action, key) in [("Undo", Selector(("undo:")), "z"), ("Cut", #selector(NSText.cut(_:)), "x"), ("Copy", #selector(NSText.copy(_:)), "c"), ("Paste", #selector(NSText.paste(_:)), "v"), ("Select All", #selector(NSText.selectAll(_:)), "a")] {
             edit.submenu?.addItem(withTitle: title, action: action, keyEquivalent: key)
         }
-        menu.addItem(edit); NSApp.mainMenu = menu
+        menu.addItem(edit)
+        let view = NSMenuItem(); view.submenu = NSMenu(title: "View")
+        view.submenu?.addItem(withTitle: "Toggle Sidebar", action: #selector(toggleHistory), keyEquivalent: "b").target = self
+        view.submenu?.addItem(withTitle: "Jump to Latest", action: #selector(jumpToLatest), keyEquivalent: String(UnicodeScalar(NSDownArrowFunctionKey)!)).target = self
+        menu.addItem(view); NSApp.mainMenu = menu
         show()
     }
     @objc private func statusClicked() {
@@ -119,14 +128,15 @@ final class ChatPanel: NSPanel {
         previousApp?.activate(options: [])
         Task { await store.flush() }
     }
-    private func toggleHistory() {
+    @objc private func toggleHistory() {
         state.historyVisible.toggle()
-        var frame = panel.frame
-        frame.size.width += state.historyVisible ? 223 : -223
-        frame.size.width = max(state.historyVisible ? 823 : 600, frame.size.width)
-        if let screen = panel.screen?.visibleFrame { frame.origin.x = min(frame.origin.x, screen.maxX - frame.width) }
-        panel.minSize = NSSize(width: state.historyVisible ? 823 : 600, height: 420)
-        panel.setFrame(frame, display: true, animate: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        if !state.historyVisible { store.focusRequest = UUID() }
+    }
+    @objc private func jumpToLatest() { state.scrollToBottomRequest = UUID() }
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        guard item.action == #selector(toggleHistory) || item.action == #selector(jumpToLatest) else { return true }
+        return panel?.isKeyWindow == true && !state.settingsVisible &&
+            !((panel.firstResponder as? RecorderButton)?.recording ?? false)
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
