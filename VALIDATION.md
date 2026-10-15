@@ -4,7 +4,7 @@ Built on Apple Silicon, macOS 26.7.1, Xcode 27.0, Swift 6.4. Deployment target: 
 
 ## Passed
 
-- Production build and strict code-signature verification. Delivered executable SHA-256: `e50b2891c7d8786225c7e63a8dc082455eb4b05d7729797038563316059c8036`.
+- Production build and strict code-signature verification. Delivered executable SHA-256: `1f0031ef14eba503c45ceb29d20c9fef24eae81d3823e7f9198024bea69e6310`.
 - Eleven automated tests, including real RSA signature verification/tampering, PKCE, callback state/account mismatch/duplicate rejection, stream framing and terminal failures, Unicode citations, request history with image data, owner-only local persistence, and interrupted response recovery.
 - Native AppKit regression: an isolated image-only PNG pasteboard enables Paste in the plain-text composer and invokes the image attachment callback. Empty/unsupported content produces a visible error. The test never reads or replaces the user's general clipboard.
 - Personal ChatGPT Pro sign-in completed by Felipe in the system browser. The native app received the account's model catalog and selected GPT-6.1-Sol.
@@ -30,3 +30,13 @@ The automated runner initially lacked pasteboard-service access in its shell san
 - Public distribution, notarization, auto-updates, Intel Mac testing, or launch-at-login behavior.
 
 No repository was published and no remote PR was created. Test chats remain local so Felipe can review the live results.
+
+## Window and settings update
+
+The blank startup window was the empty SwiftUI Settings scene (`com_apple_SwiftUI_Settings_window`), separate from the AppKit chat panel. AppKit now owns the application lifecycle and its single panel; the placeholder scene was removed. Settings is a matching screen inside that panel, with account, window/shortcut, and local-data sections.
+
+Native checks confirmed launch into the chat panel, opening Settings with both the gear and Command–Comma, returning with Escape, composer focus, preserved drafts and history, and cancelling shortcut recording without changing its displayed binding. The app-wide **Keep QuickChat on top** preference defaults off, updates the panel level immediately, and retained its enabled value through Command–N and a full restart. It was switched off again after testing. No additional inference request was needed for this UI update.
+
+The final release was reopened and its complete settings layout inspected at 680 × 520. Command–N directly from Settings opened a new chat with the composer focused and retained the enabled on-top preference. The setting was then switched off. All 11 tests passed again after the changes. The native settings screenshot in the deliverables was captured from this release. Restart persistence and draft checks ran before the final layout/Command–N refinements; fullscreen and multiple-monitor behavior remain outside this check.
+
+Repeated Keychain prompts during development were traced to ad-hoc signing: the current designated requirement identifies the executable by its code hash. No valid code-signing identity was available on this Mac when checked. Felipe approved the final build's Keychain prompt. A stable signing certificate is still needed to avoid changing this identity with each rebuild.

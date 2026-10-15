@@ -27,7 +27,9 @@ For development:
 - **Control–Option–Space** opens or hides QuickChat. Change the shortcut in Settings by clicking the recorder and pressing a combination containing Control, Option, or Command.
 - **Return** sends. **Shift–Return** inserts a newline.
 - **Escape** hides the panel and returns focus to the previous app. An active response continues; use Stop to cancel it.
-- **Command–N** starts a chat. **Command–B** toggles searchable history. **Command–Comma** opens settings.
+- **Command–N** starts a chat, including from Settings. **Command–B** toggles searchable history. **Command–Comma** opens settings.
+- Settings opens inside the chat panel; **Escape** or the back arrow returns to your chat with its draft intact. Startup opens only the chat panel.
+- **Keep QuickChat on top** in Settings defaults to off. It applies immediately and is saved for the app, across new chats, switching chats, and restarts.
 - **Command–V** pastes text or screenshots into the composer. Preview or remove a screenshot before sending. Up to four images per message, 20 MB per image, and 50 megapixels per image.
 - Choose an account-provided model in the top bar. Web search defaults to **Auto** and can be switched **Off** per chat. Search availability depends on the model/account. Responses retain clickable source links.
 - Right-click a chat to delete it, or right-click the menu-bar icon for settings and Quit.

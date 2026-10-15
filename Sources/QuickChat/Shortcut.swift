@@ -54,24 +54,30 @@ struct Shortcut: Codable, Equatable {
 struct ShortcutRecorder: NSViewRepresentable {
     @ObservedObject var hotkey: GlobalShortcut
     func makeNSView(context: Context) -> RecorderButton {
-        let button = RecorderButton(); button.bezelStyle = .rounded; button.title = hotkey.shortcut.label
+        let button = RecorderButton(); button.bezelStyle = .rounded
+        button.shortcutLabel = hotkey.shortcut.label; button.title = button.shortcutLabel
         button.onRecord = { hotkey.register($0) }; return button
     }
-    func updateNSView(_ button: RecorderButton, context: Context) { if !button.recording { button.title = hotkey.shortcut.label } }
+    func updateNSView(_ button: RecorderButton, context: Context) {
+        button.shortcutLabel = hotkey.shortcut.label
+        if !button.recording { button.title = button.shortcutLabel }
+    }
 }
 final class RecorderButton: NSButton {
     var onRecord: ((Shortcut) -> Void)?
+    var shortcutLabel = ""
     var recording = false
     override var acceptsFirstResponder: Bool { true }
     override init(frame: NSRect) { super.init(frame: frame); target = self; action = #selector(record); setAccessibilityLabel("Record global shortcut") }
     required init?(coder: NSCoder) { fatalError() }
     @objc private func record() { recording = true; title = "Press shortcut…"; window?.makeFirstResponder(self) }
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { recording = false; title = "Click to record"; return }
+        guard recording else { super.keyDown(with: event); return }
+        if event.keyCode == 53 { recording = false; title = shortcutLabel; return }
         if let shortcut = Shortcut.from(event) { recording = false; onRecord?(shortcut); title = shortcut.label }
     }
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if recording { keyDown(with: event); return true }; return super.performKeyEquivalent(with: event)
     }
-    override func resignFirstResponder() -> Bool { recording = false; return super.resignFirstResponder() }
+    override func resignFirstResponder() -> Bool { recording = false; title = shortcutLabel; return super.resignFirstResponder() }
 }

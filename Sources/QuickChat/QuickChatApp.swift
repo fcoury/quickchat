@@ -1,9 +1,14 @@
 import AppKit
 import SwiftUI
 
-@main struct QuickChatApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
-    var body: some Scene { Settings { EmptyView() } }
+@main enum QuickChatApp {
+    @MainActor static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        // AppKit owns the single panel; a SwiftUI Settings scene creates a second window.
+        withExtendedLifetime(delegate) { app.run() }
+    }
 }
 
 final class ChatPanel: NSPanel {
@@ -37,7 +42,10 @@ final class ChatPanel: NSPanel {
         panel = ChatPanel(contentRect: NSRect(x: 0, y: 0, width: 680, height: 520), styleMask: [.borderless, .resizable, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = "QuickChat"; panel.identifier = NSUserInterfaceItemIdentifier("QuickChatPanel")
         panel.minSize = NSSize(width: 600, height: 420); panel.isReleasedWhenClosed = false; panel.delegate = self
-        panel.level = .floating; panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.isRestorable = false
+        panel.level = state.keepOnTop ? .floating : .normal
+        state.updateWindowLevel = { [weak self] keepOnTop in self?.panel.level = keepOnTop ? .floating : .normal }
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
         panel.isMovableByWindowBackground = true; panel.hidesOnDeactivate = false
         panel.contentView = NSHostingView(rootView: RootView(store: store, auth: auth, window: state, hotkey: hotkey))
@@ -45,13 +53,17 @@ final class ChatPanel: NSPanel {
         state.toggleHistory = { [weak self] in self?.toggleHistory() }
         hotkey.action = { [weak self] in self?.toggle() }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.panel.isKeyWindow, !self.state.settingsVisible,
-                  !(self.panel.firstResponder is RecorderButton) else { return event }
-            if event.keyCode == 53 { self.hide(); return nil }
+            guard let self, self.panel.isKeyWindow else { return event }
+            if let recorder = self.panel.firstResponder as? RecorderButton, recorder.recording { return event }
+            if event.keyCode == 53 {
+                if self.state.settingsVisible { self.state.settingsVisible = false; self.store.focusRequest = UUID() }
+                else { self.hide() }
+                return nil
+            }
             if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command {
                 switch event.charactersIgnoringModifiers {
-                case "n": self.store.newChat(); return nil
-                case "b": self.toggleHistory(); return nil
+                case "n": self.state.settingsVisible = false; self.store.newChat(); return nil
+                case "b" where !self.state.settingsVisible: self.toggleHistory(); return nil
                 case ",": self.state.settingsVisible = true; return nil
                 case "w": self.hide(); return nil
                 case "q": NSApp.terminate(nil); return nil
@@ -118,5 +130,5 @@ final class ChatPanel: NSPanel {
         Task { await store.flush(); NSApp.reply(toApplicationShouldTerminate: true) }
         return .terminateLater
     }
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { if panel != nil { show() }; return true }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { if panel != nil { show() }; return false }
 }

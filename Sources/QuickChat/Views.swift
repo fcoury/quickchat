@@ -13,8 +13,15 @@ enum Theme {
 @MainActor final class WindowState: ObservableObject {
     @Published var historyVisible = false
     @Published var settingsVisible = false
+    @Published var keepOnTop = UserDefaults.standard.bool(forKey: "keepOnTop") {
+        didSet {
+            UserDefaults.standard.set(keepOnTop, forKey: "keepOnTop")
+            updateWindowLevel?(keepOnTop)
+        }
+    }
     var toggleHistory: (() -> Void)?
     var dismiss: (() -> Void)?
+    var updateWindowLevel: ((Bool) -> Void)?
 }
 
 struct RootView: View {
@@ -23,6 +30,27 @@ struct RootView: View {
     @ObservedObject var window: WindowState
     @ObservedObject var hotkey: GlobalShortcut
     var body: some View {
+        Group {
+            if window.settingsVisible {
+                SettingsView(auth: auth, store: store, hotkey: hotkey, window: window) {
+                    window.settingsVisible = false
+                    store.focusRequest = UUID()
+                }
+            } else { chat }
+        }
+        .foregroundStyle(Color.white.opacity(0.92)).background(Theme.background)
+        .clipShape(RoundedRectangle(cornerRadius: 17))
+        .overlay(RoundedRectangle(cornerRadius: 17).stroke(Theme.border, lineWidth: 1))
+        .preferredColorScheme(.dark)
+        .alert("You’re using your ChatGPT plan", isPresented: $auth.showPlanWelcome) {
+            Button("Got it") { UserDefaults.standard.set(true, forKey: "planWelcomeShown") }
+        } message: { Text("Eligible requests in QuickChat use your ChatGPT plan or available credits. You can manage app usage in ChatGPT settings.") }
+        .task { await store.load(); await store.refreshModels(auth: auth) }
+        .onChange(of: "\(auth.vault.activeID ?? ""):\(auth.connected)") { _, _ in
+            if auth.connected { Task { await store.refreshModels(auth: auth) } } else { store.models = []; store.stop() }
+        }
+    }
+    private var chat: some View {
         HStack(spacing: 0) {
             if window.historyVisible {
                 HistoryView(store: store, window: window).frame(width: 222)
@@ -44,18 +72,6 @@ struct RootView: View {
                 composer
                 footer
             }.frame(minWidth: 560)
-        }
-        .foregroundStyle(Color.white.opacity(0.92)).background(Theme.background)
-        .clipShape(RoundedRectangle(cornerRadius: 17))
-        .overlay(RoundedRectangle(cornerRadius: 17).stroke(Theme.border, lineWidth: 1))
-        .preferredColorScheme(.dark)
-        .sheet(isPresented: $window.settingsVisible) { SettingsView(auth: auth, store: store, hotkey: hotkey) }
-        .alert("You’re using your ChatGPT plan", isPresented: $auth.showPlanWelcome) {
-            Button("Got it") { UserDefaults.standard.set(true, forKey: "planWelcomeShown") }
-        } message: { Text("Eligible requests in QuickChat use your ChatGPT plan or available credits. You can manage app usage in ChatGPT settings.") }
-        .task { await store.load(); await store.refreshModels(auth: auth) }
-        .onChange(of: "\(auth.vault.activeID ?? ""):\(auth.connected)") { _, _ in
-            if auth.connected { Task { await store.refreshModels(auth: auth) } } else { store.models = []; store.stop() }
         }
     }
     private var toolbar: some View {
@@ -302,46 +318,128 @@ struct SettingsView: View {
     @ObservedObject var auth: AuthService
     @ObservedObject var store: ChatStore
     @ObservedObject var hotkey: GlobalShortcut
-    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var window: WindowState
+    var onClose: () -> Void
     @State private var signingOut = false
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            HStack { Text("QuickChat settings").font(.system(size: 20, weight: .semibold)); Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.cancelAction) }
-            VStack(alignment: .leading, spacing: 10) {
-                Text("GLOBAL SHORTCUT").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.muted)
-                HStack { Text("Show or hide QuickChat"); Spacer(); ShortcutRecorder(hotkey: hotkey).frame(width: 160, height: 28) }
-                Text("Press Return to send, Shift-Return for a new line, and Escape to return to your previous app.").font(.system(size: 12)).foregroundStyle(Theme.muted)
-                if let error = hotkey.error { Text(error).font(.system(size: 12)).foregroundStyle(.orange) }
-            }
-            Divider()
-            VStack(alignment: .leading, spacing: 10) {
-                Text("CHATGPT ACCOUNT").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.muted)
-                if !auth.vault.accounts.isEmpty {
-                    Picker("Account", selection: Binding(get: { auth.vault.activeID ?? auth.vault.accounts.first!.id }, set: { auth.select($0) })) {
-                        ForEach(auth.vault.accounts) { account in Text(account.label).tag(account.id) }
-                    }.disabled(store.busy || auth.signingIn || signingOut)
-                }
-                Text(auth.connected ? "Using ChatGPT plan" : "Use your ChatGPT plan for eligible requests.").font(.system(size: 13))
-                HStack {
-                    if auth.connected {
-                        Button("Sign out") { store.stop(); signingOut = true; Task { await auth.signOut(); signingOut = false } }.disabled(signingOut)
-                    } else {
-                        Button(auth.signingIn ? "Waiting for your browser…" : "Continue with ChatGPT") { auth.signIn(account: auth.active ?? auth.vault.accounts.first) }.disabled(auth.signingIn || store.demo)
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                IconButton("chevron.left", help: "Back to chat (Esc)", action: onClose)
+                Text("Settings").font(.system(size: 14, weight: .medium))
+                Spacer()
+                Text("esc to return").font(.system(size: 11)).foregroundStyle(Theme.muted)
+            }.padding(.horizontal, 22).frame(height: 52)
+            Rectangle().fill(Theme.border).frame(height: 1)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    section("ChatGPT account") { account }
+                    section("Window & keyboard") {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Keep QuickChat on top")
+                                Text("Stay above other app windows, in every chat.").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            }
+                            Spacer()
+                            Toggle("Keep QuickChat on top", isOn: $window.keepOnTop)
+                                .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                                .accessibilityLabel("Keep QuickChat on top")
+                        }
+                        Rectangle().fill(Theme.border).frame(height: 1).padding(.vertical, 2)
+                        keyboard
                     }
-                    Button("Add account") { auth.signIn() }.disabled(auth.signingIn || store.busy || store.demo)
-                    if auth.signingIn { Button("Cancel") { auth.cancelSignIn() } }
-                    Spacer()
-                    Link("Manage usage ↗", destination: URL(string: "https://chatgpt.com/settings/usage")!)
+                    section("On this Mac") {
+                        HStack {
+                            Label("Saved chats & screenshots", systemImage: "folder")
+                            Spacer()
+                            Button { NSWorkspace.shared.open(store.history.root) } label: {
+                                Label("Show in Finder", systemImage: "arrow.up.right")
+                            }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        }
+                        Text("History stays on this Mac. Messages and attached screenshots are shared with OpenAI when you send. Credentials stay in Keychain.")
+                            .font(.system(size: 12)).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                    }
+                }.frame(maxWidth: 590).padding(20).frame(maxWidth: .infinity)
+            }
+            HStack {
+                Text("QuickChat 0.1")
+                Spacer()
+                shortcutHint("⌘N", "New chat")
+                shortcutHint("↵", "Send")
+                shortcutHint("⇧↵", "New line")
+            }.font(.system(size: 11)).foregroundStyle(Theme.muted).padding(.horizontal, 24).frame(height: 32)
+        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    private var account: some View {
+        Group {
+            HStack(spacing: 12) {
+                Image(systemName: "person.crop.circle").font(.system(size: 28, weight: .light)).foregroundStyle(Theme.muted)
+                VStack(alignment: .leading, spacing: 5) {
+                    if auth.vault.accounts.count > 1 {
+                        Picker("Account", selection: Binding(get: { auth.vault.activeID ?? auth.vault.accounts[0].id }, set: { auth.select($0) })) {
+                            ForEach(auth.vault.accounts) { account in Text(account.email).tag(account.id) }
+                        }.labelsHidden().disabled(store.busy || auth.signingIn || signingOut)
+                    } else {
+                        Text(store.demo ? "Preview account" : auth.active?.email ?? "Connect your ChatGPT account")
+                            .font(.system(size: 13, weight: .medium)).lineLimit(1)
+                    }
+                    HStack(spacing: 6) {
+                        Circle().fill(store.demo ? Color.orange : auth.connected ? Color.green : Theme.muted).frame(width: 5, height: 5)
+                        Text(store.demo ? "Preview · no network" : auth.connected ? "Connected · Using ChatGPT plan" : "Not connected")
+                            .font(.system(size: 11)).foregroundStyle(Theme.muted)
+                    }
                 }
-                if let error = auth.error { Text(error).font(.system(size: 12)).foregroundStyle(.orange).textSelection(.enabled) }
+                Spacer(minLength: 8)
+                Link(destination: URL(string: "https://chatgpt.com/settings/usage")!) {
+                    Label("Manage usage", systemImage: "arrow.up.right")
+                }.font(.system(size: 12)).foregroundStyle(Theme.muted)
             }
-            Divider()
-            VStack(alignment: .leading, spacing: 8) {
-                Text("ON THIS MAC").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.muted)
-                Text("Chats and screenshots are saved locally. Credentials are stored in Keychain. Sending a message shares its conversation and attached screenshots with OpenAI.").font(.system(size: 12)).foregroundStyle(Theme.muted)
-                Button("Show saved chats in Finder") { NSWorkspace.shared.open(store.history.root) }
+            HStack(spacing: 10) {
+                if auth.connected {
+                    Button(signingOut ? "Signing out…" : "Sign out") {
+                        store.stop(); signingOut = true
+                        Task { await auth.signOut(); signingOut = false }
+                    }.disabled(signingOut || auth.signingIn)
+                } else {
+                    Button(auth.signingIn ? "Waiting for browser…" : "Continue with ChatGPT") {
+                        auth.signIn(account: auth.active ?? auth.vault.accounts.first)
+                    }.disabled(auth.signingIn || signingOut || store.demo)
+                }
+                if !auth.vault.accounts.isEmpty {
+                    Button("Add account") { auth.signIn() }.disabled(auth.signingIn || signingOut || store.busy || store.demo)
+                }
+                if auth.signingIn { Button("Cancel sign-in") { auth.cancelSignIn() } }
+                Spacer()
+            }.controlSize(.small)
+            if let error = auth.error { Text(error).font(.system(size: 12)).foregroundStyle(.orange).textSelection(.enabled) }
+        }
+    }
+    private var keyboard: some View {
+        Group {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Show or hide QuickChat")
+                    Text("Click to record a new shortcut.").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                }
+                Spacer()
+                ShortcutRecorder(hotkey: hotkey).frame(width: 155, height: 28)
             }
-            Text("QuickChat 0.1 · Native macOS app").font(.system(size: 11)).foregroundStyle(Theme.muted)
-        }.padding(26).frame(width: 510).background(Theme.background).preferredColorScheme(.dark)
+            if let error = hotkey.error { Text(error).font(.system(size: 12)).foregroundStyle(.orange) }
+        }
+    }
+    private func shortcutHint(_ key: String, _ title: String) -> some View {
+        HStack(spacing: 6) {
+            Text(key).font(.system(size: 10, design: .monospaced)).padding(.horizontal, 5).padding(.vertical, 3)
+                .background(.white.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 4))
+            Text(title).font(.system(size: 11))
+        }.foregroundStyle(Theme.muted)
+    }
+    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).tracking(0.7).foregroundStyle(Theme.muted).padding(.leading, 2)
+            VStack(alignment: .leading, spacing: 10, content: content)
+                .font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                .background(Theme.surface.opacity(0.65)).clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.border, lineWidth: 1))
+        }
     }
 }
