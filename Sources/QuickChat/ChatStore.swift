@@ -17,14 +17,15 @@ import QuickChatCore
     private var lastStreamSave = Date.distantPast
     private var loaded = false
     private var modelRequest = UUID()
+    private var attachmentDestinations: [UUID: UUID] = [:]
     var current: Conversation? { chats.first { $0.id == selectedID } }
     var busy: Bool { runningID != nil }
     var selectedModelName: String { models.first { $0.slug == current?.model }?.display_name ?? (current?.model.isEmpty == false ? current!.model : "Choose model") }
-    init(demo: Bool) {
+    init(demo: Bool, history: HistoryStore? = nil) {
         self.demo = demo
         let root = demo ? FileManager.default.temporaryDirectory.appendingPathComponent("QuickChat-Demo-\(ProcessInfo.processInfo.processIdentifier)") :
             FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("QuickChat")
-        history = HistoryStore(root: root)
+        self.history = history ?? HistoryStore(root: root)
     }
     func load() async {
         guard !loaded else { return }; loaded = true
@@ -65,7 +66,17 @@ import QuickChatCore
     }
     func newChat() {
         let model = current?.model ?? models.first?.slug ?? ""
-        let chat = Conversation(model: model)
+        var chat = Conversation(model: model)
+        if let index = chats.firstIndex(where: { $0.id == selectedID }) {
+            let previousID = chats[index].id
+            chat.draft = chats[index].draft
+            chat.draftAttachments = chats[index].draftAttachments
+            chat.searchEnabled = chats[index].searchEnabled
+            // Move the draft: two chats must not own the same screenshot files.
+            chats[index].draft = ""; chats[index].draftAttachments = []
+            attachmentDestinations = attachmentDestinations.mapValues { $0 == previousID ? chat.id : $0 }
+            scheduleSave(previousID)
+        }
         chats.insert(chat, at: 0); select(chat.id); scheduleSave(chat.id)
     }
     func select(_ id: UUID) {
@@ -95,8 +106,11 @@ import QuickChatCore
         guard (current?.draftAttachments.count ?? 0) < 4 else { error = "You can attach up to four screenshots per message."; return }
         guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil), cg.width <= 16000, cg.height <= 16000,
               cg.width * cg.height <= 50_000_000 else { error = "This image is too large. Paste a smaller screenshot (up to 50 megapixels)."; return }
+        let request = UUID()
+        attachmentDestinations[request] = id
         // Keep the original pixels so small text remains readable; conversion happens off the main thread.
         Task {
+            defer { attachmentDestinations[request] = nil }
             do {
                 let data = try await Task.detached(priority: .userInitiated) {
                     let rep = NSBitmapImageRep(cgImage: cg)
@@ -106,10 +120,11 @@ import QuickChatCore
                     return data
                 }.value
                 let attachment = try await history.storeImage(data, width: cg.width, height: cg.height)
-                guard let index = chats.firstIndex(where: { $0.id == id }), chats[index].draftAttachments.count < 4 else {
+                guard let destination = attachmentDestinations[request],
+                      let index = chats.firstIndex(where: { $0.id == destination }), chats[index].draftAttachments.count < 4 else {
                     await history.removeImage(attachment); return
                 }
-                chats[index].draftAttachments.append(attachment); scheduleSave(id); focusRequest = UUID()
+                chats[index].draftAttachments.append(attachment); scheduleSave(destination); focusRequest = UUID()
             } catch { self.error = error.localizedDescription }
         }
     }

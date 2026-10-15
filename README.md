@@ -24,10 +24,10 @@ For development:
 
 ## Everyday use
 
-- **Control–Option–Space** opens or hides QuickChat. Change the shortcut in Settings by clicking the recorder and pressing a combination containing Control, Option, or Command.
+- **Control–Option–Space** opens or hides QuickChat, keeping the window where you left it for the current session. Change the shortcut in Settings by clicking the recorder and pressing a combination containing Control, Option, or Command.
 - **Return** sends. **Shift–Return** inserts a newline.
 - **Escape** hides the panel and returns focus to the previous app. An active response continues; use Stop to cancel it.
-- **Command–N** starts a chat, including from Settings. **Command–B** toggles searchable history. **Command–Comma** opens settings.
+- **Command–N** starts a fresh conversation, including from Settings, carrying your unsent text, screenshots, model, and search choice with you. The draft moves out of the previous chat; its sent messages stay in history. **Command–B** toggles searchable history. **Command–Comma** opens settings.
 - **Command–Plus** (or **Command–Equals**) enlarges chat text, **Command–Minus** makes it smaller, and **Command–0** resets it. Messages, code, and the composer resize together. The size is saved across chats and restarts, from 12 to 26 points with a 15-point default.
 - Settings opens inside the chat panel; **Escape** or the back arrow returns to your chat with its draft intact. Startup opens only the chat panel.
 - **Keep QuickChat on top** in Settings defaults to off. It applies immediately and is saved for the app, across new chats, switching chats, and restarts.

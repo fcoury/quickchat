@@ -26,6 +26,7 @@ final class ChatPanel: NSPanel {
     private var previousApp: NSRunningApplication?
     private var keyMonitor: Any?
     private var terminating = false
+    private var positionedPanel = false
     func applicationDidFinishLaunching(_ notification: Notification) {
         // A single process owns rotating credentials and local history.
         if let bundleID = Bundle.main.bundleIdentifier,
@@ -39,7 +40,8 @@ final class ChatPanel: NSPanel {
         statusItem.button?.image = NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: "QuickChat")
         statusItem.button?.target = self; statusItem.button?.action = #selector(statusClicked)
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        panel = ChatPanel(contentRect: NSRect(x: 0, y: 0, width: 680, height: 520), styleMask: [.borderless, .resizable, .nonactivatingPanel], backing: .buffered, defer: false)
+        // Clicking the panel must activate QuickChat so edit shortcuts reach its composer.
+        panel = ChatPanel(contentRect: NSRect(x: 0, y: 0, width: 680, height: 520), styleMask: [.borderless, .resizable], backing: .buffered, defer: false)
         panel.title = "QuickChat"; panel.identifier = NSUserInterfaceItemIdentifier("QuickChatPanel")
         panel.minSize = NSSize(width: 600, height: 420); panel.isReleasedWhenClosed = false; panel.delegate = self
         panel.isRestorable = false
@@ -100,11 +102,13 @@ final class ChatPanel: NSPanel {
     private func show() {
         let active = NSWorkspace.shared.frontmostApplication
         if active?.processIdentifier != ProcessInfo.processInfo.processIdentifier { previousApp = active }
-        if !panel.isVisible {
+        // Keep a dragged/resized panel in place; recenter only initially or if its display disappeared.
+        if !positionedPanel || !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(panel.frame) }) {
             let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
             if let frame = screen?.visibleFrame {
                 let size = panel.frame.size
                 panel.setFrameOrigin(NSPoint(x: frame.midX - size.width / 2, y: frame.midY - size.height / 2 + 45))
+                positionedPanel = true
             }
         }
         NSApp.activate(ignoringOtherApps: true); panel.makeKeyAndOrderFront(nil)

@@ -4,8 +4,8 @@ Built on Apple Silicon, macOS 26.7.1, Xcode 27.0, Swift 6.4. Deployment target: 
 
 ## Passed
 
-- Production build and strict code-signature verification. Delivered executable SHA-256: `979ae01300f2035c5f99ed6755862fb43885311e55df97edc580a5697c3f8811`.
-- Twelve automated tests, including real RSA signature verification/tampering, PKCE, callback state/account mismatch/duplicate rejection, stream framing and terminal failures, Unicode citations, request history with image data, owner-only local persistence, interrupted response recovery, and font shortcut modifiers/bounds/persistence.
+- Production build and strict code-signature verification. Delivered executable SHA-256: `d42ade17c3a6f2ea181bbdc2aa057fb288c454fb92c7c895f1ccc0d36b206293`.
+- Fourteen automated tests, including real RSA signature verification/tampering, PKCE, callback state/account mismatch/duplicate rejection, stream framing and terminal failures, Unicode citations, request history with image data, owner-only local persistence, interrupted response recovery, font shortcut modifiers/bounds/persistence, and draft/screenshot transfer to a new chat.
 - Native AppKit regression: an isolated image-only PNG pasteboard enables Paste in the plain-text composer and invokes the image attachment callback. Empty/unsupported content produces a visible error. The test never reads or replaces the user's general clipboard.
 - Personal ChatGPT Pro sign-in completed by Felipe in the system browser. The native app received the account's model catalog and selected GPT-6.1-Sol.
 - A real streamed rewrite completed and was saved locally.
@@ -50,3 +50,13 @@ The added regression test uses an isolated preferences suite and checks actual A
 Native checks exercised Command–Equals, Shift–Command–Plus, and Command–Minus in the focused composer. Transcript text and the placeholder resized visibly; the saved 18-point setting survived reopening the final release. Reset and bounds were verified by the regression test. Code-block resizing was compiled and reviewed but not separately exercised with a live code response.
 
 Felipe also reported that the top-left corner of an assistant answer was cut off. The message container applied a rounded clipping mask to unpadded assistant text. Rounded corners now apply only to the background shape. The final release was visually checked with the reported “Bureaucracy.” answer: its first letter is intact, and the user bubble remains rounded.
+
+## Draft, position, and focus fixes
+
+Command–N and the new-chat buttons carry the unsent text, screenshots, model, and search choice into the fresh conversation. The draft moves out of the previous conversation while its sent messages stay in history. Moving ownership avoids two chats referencing the same image file, which could otherwise be deleted from under the new draft. Image conversions already in progress follow the draft, even across consecutive new chats.
+
+Two added regression tests use isolated temporary history stores. They check multiline Unicode drafts, unchanged message history and unrelated drafts, model/search retention, persisted transfer, screenshot survival when deleting the old chat, and an image conversion that finishes after two new chats and a selection change. All 14 tests pass. Native Command–N checks from both the composer and Settings retained the test draft; the draft also survived the release restart.
+
+The show action no longer recenters a hidden window. It places the panel on first launch and only recenters later if the panel no longer intersects any available display. Position is retained for the current app session. Felipe confirmed dragging the release window and hiding/reopening it with his configured Shift–Command–K keeps it in place. The disconnected-monitor fallback has not been exercised on actual display hardware.
+
+The panel's non-activating style was removed so clicking it activates QuickChat and routes editing shortcuts to its composer. The native Select All check visibly selected the complete draft. Felipe also confirmed the original cross-app reproduction: click in Codex, click the QuickChat composer, and Command–A now selects QuickChat's text. The final release reopened with the saved sign-in, 18-point font, configured shortcut, and on-top preference intact. No inference request was needed for these fixes.
