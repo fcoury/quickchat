@@ -33,7 +33,7 @@ For development:
 - **Keep QuickChat on top** in Settings defaults to off. It applies immediately and is saved for the app, across new chats, switching chats, and restarts.
 - **Command–V** pastes text or screenshots into the composer. Preview or remove a screenshot before sending. Up to four images per message, 20 MB per image, and 50 megapixels per image.
 - Choose an account-provided model in the top bar. Web search defaults to **Auto** and can be switched **Off** per chat. Search availability depends on the model/account. Responses retain clickable source links.
-- Replies render Markdown headings, nested lists, quotes, tables, links, and inline code. Code blocks have syntax colors for common languages, horizontal scrolling, and a Copy button that preserves the source. Unknown languages and very large code blocks stay plain text. Short user messages use compact bubbles, and wide windows keep replies within a readable column.
+- Replies render Markdown headings, nested lists, quotes, tables, links, and inline code. Code blocks have syntax colors for common languages, horizontal scrolling, and a Copy button that preserves the source. A subtle **↔ Scroll** hint appears when code extends offscreen. Unknown languages and very large code blocks stay plain text. Short user messages use compact bubbles; prose caps at 720 points while code can use the full 960-point reply column.
 - Right-click a chat to delete it, or right-click the menu-bar icon for settings and Quit.
 
 ## ChatGPT sign-in

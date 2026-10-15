@@ -48,9 +48,10 @@ private struct MarkdownBlockView: View {
     @ViewBuilder var body: some View {
         switch block.kind {
         case .paragraph:
-            prose(block.content)
+            prose(block.content).frame(maxWidth: 720, alignment: .leading)
         case .header(let level):
             prose(block.content, size: fontSize + (level == 1 ? 10 : level == 2 ? 5 : 2), weight: .semibold)
+                .frame(maxWidth: 720, alignment: .leading)
                 .padding(.top, 6).accessibilityAddTraits(.isHeader)
         case .codeBlock(let language):
             CodeBlockView(code: String(block.content.characters), language: language, fontSize: fontSize)
@@ -130,10 +131,17 @@ private struct CodeBlockView: View {
     let language: String?
     let fontSize: CGFloat
     @State private var copied = false
+    @State private var contentWidth: CGFloat = 0
+    @State private var viewportWidth: CGFloat = 0
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(language?.isEmpty == false ? language! : "Code").fontWeight(.medium)
+                if viewportWidth > 0 && contentWidth > viewportWidth + 1 {
+                    Label("Scroll", systemImage: "arrow.left.and.right")
+                        .help("Scroll horizontally to see the rest of the code")
+                        .accessibilityLabel("Code scrolls horizontally")
+                }
                 Spacer()
                 Button {
                     NSPasteboard.general.clearContents(); NSPasteboard.general.setString(code, forType: .string)
@@ -150,7 +158,9 @@ private struct CodeBlockView: View {
                 Text(CodeHighlighting.highlight(code.hasSuffix("\n") ? String(code.dropLast()) : code, language: language))
                     .font(.system(size: max(12, fontSize * 0.9), design: .monospaced)).lineSpacing(4)
                     .textSelection(.enabled).fixedSize(horizontal: true, vertical: true).padding(14)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewportWidth = $0 }
         }.background(.black.opacity(0.22))
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.border))

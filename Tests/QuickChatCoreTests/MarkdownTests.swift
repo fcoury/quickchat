@@ -4,10 +4,10 @@ import XCTest
 @testable import QuickChat
 
 final class MarkdownTests: XCTestCase {
-    @MainActor func testNativeLayoutAtDefaultAndLargeFontSizes() throws {
+    @MainActor func testNativeLayoutAtDefaultAndLargeFontSizes() async throws {
         _ = NSApplication.shared
         let sample = """
-        Here are a few **useful snippets**, with `inline code` and a [documentation link](https://example.com).
+        Here are a few **useful snippets**, with `inline code` and a [documentation link](https://example.com). The explanation stays easy to scan in a wide window, while the code below uses the extra room for longer lines. Resize the window or adjust the text size to see how the layout adapts.
 
         ### Python — Remove duplicates while preserving order
 
@@ -40,7 +40,7 @@ final class MarkdownTests: XCTestCase {
         | Python | Remove duplicates |
         | JavaScript | Count occurrences |
         """
-        for (width, font) in [(CGFloat(640), CGFloat(15)), (640, 26)] {
+        for (width, font) in [(CGFloat(640), CGFloat(15)), (1008, 15), (640, 26)] {
             let host = NSHostingView(rootView: MarkdownText(text: sample, fontSize: font)
                 .padding(24).frame(width: width).fixedSize(horizontal: false, vertical: true)
                 .foregroundStyle(Color.white.opacity(0.92)).background(Theme.background).environment(\.colorScheme, .dark))
@@ -50,12 +50,14 @@ final class MarkdownTests: XCTestCase {
             let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: .borderless, backing: .buffered, defer: false)
             window.contentView = host
             host.layoutSubtreeIfNeeded()
+            await Task.yield()
+            host.layoutSubtreeIfNeeded()
             if let directory = ProcessInfo.processInfo.environment["QUICKCHAT_RENDER_EVIDENCE_DIR"] {
                 let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
                 host.cacheDisplay(in: host.bounds, to: bitmap)
                 let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
                 try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-                try data.write(to: URL(fileURLWithPath: directory).appendingPathComponent("markdown-\(Int(font))pt.png"))
+                try data.write(to: URL(fileURLWithPath: directory).appendingPathComponent("markdown-\(Int(width))w-\(Int(font))pt.png"))
             }
         }
     }
