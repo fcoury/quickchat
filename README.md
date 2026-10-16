@@ -13,6 +13,8 @@ open dist/QuickChat.app
 
 The bundle is ad-hoc signed for local use. It is not notarized for public distribution. You can copy it to Applications yourself. Rebuilding an ad-hoc signed app may cause macOS to ask for Keychain access again.
 
+The bundled app icon comes from `assets/quickchat-icon-concept.png`. After changing the artwork, run `bash scripts/build-icon.sh` to regenerate `Resources/QuickChat.icns`, then rebuild the app. The menu bar uses a matching monochrome Q that adapts to the system appearance.
+
 For development:
 
 ```sh
@@ -27,6 +29,7 @@ For development:
 - **Control–Option–Space** opens or hides QuickChat. Window size and position are saved across restarts; if the saved display is unavailable, the window opens on an available screen. Change the shortcut in Settings by clicking the recorder and pressing a combination containing Control, Option, or Command.
 - **Return** sends. **Shift–Return** inserts a newline.
 - **Escape** hides the panel and returns focus to the previous app. An active response continues; use Stop to cancel it.
+- QuickChat appears in the Dock while its panel is open. Hiding or closing the panel (including **Command–W**) removes it from the Dock and keeps it running in the menu bar; the menu-bar icon or global shortcut brings it back.
 - **Command–N** starts a fresh conversation, including from Settings, carrying your unsent text, screenshots, model, and search choice with you. The draft moves out of the previous chat; its sent messages stay in history. **Command–B** or **View → Toggle Sidebar** toggles searchable history within the existing window size and position. **Command–Comma** opens settings.
 - **Command–Down** or **View → Jump to Latest** scrolls to the end of the conversation. A small **Latest** button appears above the composer when you scroll away from the bottom. Return still sends messages; Escape still hides the window.
 - **Command–Plus** (or **Command–Equals**) enlarges chat text, **Command–Minus** makes it smaller, and **Command–0** resets it. Messages, code, and the composer resize together. The size is saved across chats and restarts, from 12 to 26 points with a 15-point default.

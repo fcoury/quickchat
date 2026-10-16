@@ -37,7 +37,7 @@ final class ChatPanel: NSPanel {
         let demo = CommandLine.arguments.contains("--demo")
         store = ChatStore(demo: demo); auth = AuthService(preview: demo); hotkey = GlobalShortcut(preview: demo)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: "QuickChat")
+        statusItem.button?.image = Self.menuBarIcon()
         statusItem.button?.target = self; statusItem.button?.action = #selector(statusClicked)
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         // Clicking the panel must activate QuickChat so edit shortcuts reach its composer.
@@ -107,6 +107,25 @@ final class ChatPanel: NSPanel {
     }
     @objc private func openFromMenu() { show() }
     @objc private func settingsFromMenu() { show(); state.settingsVisible = true }
+    private static func menuBarIcon() -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+            NSColor.black.setFill()
+            let ring = NSBezierPath(ovalIn: NSRect(x: 1, y: 3, width: 14, height: 14))
+            ring.appendOval(in: NSRect(x: 4.5, y: 6.5, width: 7, height: 7))
+            ring.windingRule = .evenOdd
+            ring.fill()
+            let tail = NSBezierPath()
+            tail.move(to: NSPoint(x: 10, y: 5))
+            tail.line(to: NSPoint(x: 15.2, y: 1.5))
+            tail.curve(to: NSPoint(x: 16, y: 2.3), controlPoint1: NSPoint(x: 16, y: 1), controlPoint2: NSPoint(x: 16.5, y: 1.5))
+            tail.line(to: NSPoint(x: 13.5, y: 7))
+            tail.close(); tail.fill()
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "QuickChat"
+        return image
+    }
     private func toggle() { if panel.isKeyWindow { hide() } else { show() } }
     private func show() {
         let active = NSWorkspace.shared.frontmostApplication
@@ -120,13 +139,19 @@ final class ChatPanel: NSPanel {
                 positionedPanel = true
             }
         }
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true); panel.makeKeyAndOrderFront(nil)
         store.focusRequest = UUID()
     }
     private func hide() {
         panel.orderOut(nil)
+        NSApp.setActivationPolicy(.accessory)
         previousApp?.activate(options: [])
         Task { await store.flush() }
+    }
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        hide()
+        return false
     }
     @objc private func toggleHistory() {
         state.historyVisible.toggle()
