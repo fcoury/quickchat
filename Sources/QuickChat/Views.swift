@@ -125,7 +125,7 @@ struct RootView: View {
             } label: {
                 HStack(spacing: 8) { Text(store.loadingModels ? "Loading models…" : store.selectedModelName).font(.system(size: 14, weight: .medium)); Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.muted) }
             }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().disabled(store.busy)
-            Spacer()
+            WindowDragArea().frame(minWidth: 24, maxWidth: .infinity, maxHeight: .infinity).help("Drag to move window")
             IconButton("square.and.pencil", help: "New chat (⌘N)") { store.newChat() }
             IconButton("gearshape", help: "Settings (⌘,)") { window.settingsVisible = true }
         }.padding(.horizontal, 22).frame(height: 52)
@@ -390,7 +390,7 @@ struct SettingsView: View {
             HStack(spacing: 12) {
                 IconButton("chevron.left", help: "Back to chat (Esc)", action: onClose)
                 Text("Settings").font(.system(size: 14, weight: .medium))
-                Spacer()
+                WindowDragArea().frame(minWidth: 24, maxWidth: .infinity, maxHeight: .infinity).help("Drag to move window")
                 Text("esc to return").font(.system(size: 11)).foregroundStyle(Theme.muted)
             }.padding(.horizontal, 22).frame(height: 52)
             Rectangle().fill(Theme.border).frame(height: 1)
