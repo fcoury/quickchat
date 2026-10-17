@@ -13,7 +13,7 @@ open dist/QuickChat.app
 
 The bundle is ad-hoc signed for local use. It is not notarized for public distribution. You can copy it to Applications yourself. Rebuilding an ad-hoc signed app may cause macOS to ask for Keychain access again.
 
-The bundled app icon comes from `assets/quickchat-icon-concept.png`. After changing the artwork, run `bash scripts/build-icon.sh` to regenerate `Resources/QuickChat.icns`, then rebuild the app. The menu bar uses a matching monochrome Q that adapts to the system appearance.
+The bundled app icon comes from `assets/quickchat-icon-concept.png`. After changing the artwork, run `bash scripts/build-icon.sh` to regenerate `Resources/QuickChat.icon/Assets/artwork.png` and the legacy `Resources/QuickChat.icns`, then rebuild the app. The build requires full Xcode 26 or later to compile the native `.icon` into `Assets.car`. macOS Tahoe uses the full charcoal canvas and applies its own outer mask; earlier releases use the padded `.icns` fallback. The menu bar uses a matching monochrome Q that adapts to the system appearance.
 
 For development:
 
