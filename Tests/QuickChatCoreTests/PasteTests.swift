@@ -1,8 +1,46 @@
 import AppKit
+import QuickChatCore
 import XCTest
 @testable import QuickChat
 
 final class PasteTests: XCTestCase {
+    @MainActor func testCopyConversationUsesRequestedHistoryRowAndOmitsDraft() async throws {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let store = ChatStore(demo: true)
+        await store.load()
+        let active = try XCTUnwrap(store.current)
+        var archived = Conversation()
+        archived.title = "Layout review"
+        archived.draft = "Unsent follow-up"
+        let screenshot = Attachment(filename: "screen.png", width: 640, height: 480)
+        var reply = Message(role: "assistant", text: "Try this:\n```swift\nlayout()\n```")
+        reply.citations = [Citation(url: "https://example.com/layout", title: "Layout guide")]
+        archived.messages = [Message(role: "user", text: "Review this.", attachments: [screenshot]), reply]
+        store.chats.append(archived)
+
+        XCTAssertTrue(store.copyConversation(archived.id, to: board))
+        let expected = """
+        Layout review
+
+        You:
+        [Screenshot, 640 × 480]
+        Review this.
+
+        Assistant:
+        Try this:
+        ```swift
+        layout()
+        ```
+        Layout guide — https://example.com/layout
+        """
+        XCTAssertEqual(board.string(forType: .string), expected)
+        XCTAssertEqual(store.selectedID, active.id)
+        let empty = try XCTUnwrap(store.chats.first(where: { $0.messages.isEmpty }))
+        XCTAssertFalse(store.copyConversation(empty.id, to: board))
+        XCTAssertEqual(board.string(forType: .string), expected)
+    }
+
     @MainActor func testImageOnlyClipboardEnablesPasteAndDeliversPNG() async throws {
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }

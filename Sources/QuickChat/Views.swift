@@ -65,6 +65,7 @@ struct RootView: View {
     @ObservedObject var auth: AuthService
     @ObservedObject var window: WindowState
     @ObservedObject var hotkey: GlobalShortcut
+    @State private var copyConfirmation: UUID?
     var body: some View {
         Group {
             if window.settingsVisible {
@@ -126,6 +127,17 @@ struct RootView: View {
                 HStack(spacing: 8) { Text(store.loadingModels ? "Loading models…" : store.selectedModelName).font(.system(size: 14, weight: .medium)); Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.muted) }
             }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().disabled(store.busy)
             WindowDragArea().frame(minWidth: 24, maxWidth: .infinity, maxHeight: .infinity).help("Drag to move window")
+            IconButton(copyConfirmation == nil ? "list.clipboard" : "checkmark",
+                       help: copyConfirmation == nil ? "Copy Conversation" : "Conversation Copied") {
+                if store.copyConversation(store.selectedID) { copyConfirmation = UUID() }
+            }
+            .disabled(store.current?.messages.isEmpty != false)
+            .onChange(of: store.selectedID) { copyConfirmation = nil }
+            .task(id: copyConfirmation) {
+                guard copyConfirmation != nil else { return }
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                copyConfirmation = nil
+            }
             IconButton("square.and.pencil", help: "New chat (⌘N)") { store.newChat() }
             IconButton("gearshape", help: "Settings (⌘,)") { window.settingsVisible = true }
         }.padding(.horizontal, 22).frame(height: 52)
@@ -215,7 +227,11 @@ struct HistoryView: View {
                                 HStack { Text(chat.title).lineLimit(1); Spacer(minLength: 0); if store.runningID == chat.id { ProgressView().controlSize(.mini) } }
                                     .font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).padding(.vertical, 10)
                                     .background(store.selectedID == chat.id ? Theme.surface : .clear).clipShape(RoundedRectangle(cornerRadius: 8))
-                            }.buttonStyle(.plain).contextMenu { Button("Delete chat", role: .destructive) { deleting = chat }.disabled(store.runningID == chat.id) }
+                            }.buttonStyle(.plain).contextMenu {
+                                Button("Copy Conversation") { store.copyConversation(chat.id) }.disabled(chat.messages.isEmpty)
+                                Divider()
+                                Button("Delete chat", role: .destructive) { deleting = chat }.disabled(store.runningID == chat.id)
+                            }
                         }
                     }
                     if groups.isEmpty { Text("No matching chats").font(.system(size: 12)).foregroundStyle(Theme.muted).padding() }
