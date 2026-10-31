@@ -2,6 +2,8 @@
 
 A small native macOS menu-bar chat app for quick questions, rewrites, code discussion, and screenshots. Built with SwiftUI and AppKit, without third-party runtime dependencies or a Codex process.
 
+![QuickChat showing a conversation and chat history in demo mode](assets/quickchat-screenshot.jpg)
+
 ## Build and run
 
 Requires macOS 14 or later and Xcode / Swift 6 or later. The build targets the current Mac's architecture.
