@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (for example, 0.1.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Validate release
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo 'Expected a stable X.Y.Z version'; exit 1; }
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Resources/Info.plist)" == "$VERSION" ]] || { echo 'Update CFBundleShortVersionString before releasing'; exit 1; }
+          ! git rev-parse "refs/tags/v$VERSION" >/dev/null 2>&1 || { echo 'Tag already exists'; exit 1; }
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_NOTARY_KEY APPLE_NOTARY_KEY_ID APPLE_NOTARY_ISSUER_ID; do
+            [[ -n "${!name}" ]] || { echo "Missing secret $name"; exit 1; }
+          done
+      - name: Test and build
+        run: |
+          ./scripts/swift.sh test
+          ./scripts/build.sh release
+      - name: Sign and notarize
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(openssl rand -hex 24)"
+          trap 'security delete-keychain "$keychain" >/dev/null 2>&1 || true' EXIT
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          printf '%s' "$APPLE_NOTARY_KEY" > "$RUNNER_TEMP/AuthKey.p8"
+          chmod 600 "$RUNNER_TEMP/certificate.p12" "$RUNNER_TEMP/AuthKey.p8"
+          security create-keychain -p "$password" "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" >/dev/null
+          codesign --force --sign 'Developer ID Application: Felipe Coury (UXWHD5F6F4)' --keychain "$keychain" --options runtime --timestamp dist/QuickChat.app
+          codesign --verify --deep --strict dist/QuickChat.app
+          ditto -c -k --keepParent dist/QuickChat.app "$RUNNER_TEMP/notary.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notary.zip" --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait
+          xcrun stapler staple dist/QuickChat.app
+          xcrun stapler validate dist/QuickChat.app
+          spctl --assess --type execute --verbose dist/QuickChat.app
+          ditto -c -k --keepParent dist/QuickChat.app "dist/QuickChat-$VERSION-macos-arm64.zip"
+          (cd dist && shasum -a 256 "QuickChat-$VERSION-macos-arm64.zip" > SHA256SUMS.txt)
+      - name: Generate changelog
+        run: |
+          brew install git-cliff
+          git cliff --unreleased --tag "v$VERSION" --output "$RUNNER_TEMP/release-notes.md"
+      - name: Create draft release
+        run: |
+          gh release create "v$VERSION" "dist/QuickChat-$VERSION-macos-arm64.zip" dist/SHA256SUMS.txt --target "$GITHUB_SHA" --title "QuickChat v$VERSION" --notes-file "$RUNNER_TEMP/release-notes.md" --draft
