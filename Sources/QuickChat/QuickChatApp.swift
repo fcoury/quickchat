@@ -45,9 +45,8 @@ final class ChatPanel: NSPanel {
         panel.title = "QuickChat"; panel.identifier = NSUserInterfaceItemIdentifier("QuickChatPanel")
         panel.minSize = NSSize(width: 600, height: 420); panel.isReleasedWhenClosed = false; panel.delegate = self
         panel.isRestorable = false
-        panel.level = state.keepOnTop ? .floating : .normal
-        state.updateWindowLevel = { [weak self] keepOnTop in self?.panel.level = keepOnTop ? .floating : .normal }
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        updateWindowLevel(state.keepOnTop)
+        state.updateWindowLevel = { [weak self] keepOnTop in self?.updateWindowLevel(keepOnTop) }
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
         panel.isMovableByWindowBackground = true; panel.hidesOnDeactivate = false
         panel.contentView = NSHostingView(rootView: RootView(store: store, auth: auth, window: state, hotkey: hotkey))
@@ -125,6 +124,11 @@ final class ChatPanel: NSPanel {
         image.isTemplate = true
         image.accessibilityDescription = "QuickChat"
         return image
+    }
+    private func updateWindowLevel(_ keepOnTop: Bool) {
+        panel.level = keepOnTop ? .floating : .normal
+        // An unpinned panel follows explicit activation into a Space, including fullscreen video.
+        panel.collectionBehavior = [keepOnTop ? .canJoinAllSpaces : .moveToActiveSpace, .fullScreenAuxiliary]
     }
     private func toggle() { if panel.isKeyWindow { hide() } else { show() } }
     private func show() {
