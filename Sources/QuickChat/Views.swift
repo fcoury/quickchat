@@ -350,7 +350,12 @@ struct MessageView: View {
                 }
                 if message.role == "assistant", message.status != .streaming {
                     HStack(spacing: 20) {
-                        Button { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(message.text, forType: .string); copied = true; DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false } } label: { Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "square.on.square") }.disabled(message.text.isEmpty)
+                        Button {
+                            copied = ChatClipboard(reply: message).write()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+                        } label: {
+                            Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "square.on.square")
+                        }.disabled(message.text.isEmpty)
                         if canRetry { Button(action: retry) { Label("Retry", systemImage: "arrow.clockwise") } }
                     }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.muted).padding(.top, 2)
                 }

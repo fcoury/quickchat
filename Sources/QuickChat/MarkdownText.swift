@@ -15,7 +15,13 @@ struct MarkdownBlock: Identifiable {
         var root = MarkdownBlock(id: 0, kind: .paragraph)
         for (intent, range) in parsed.runs[\.presentationIntent] {
             let path = Array((intent?.components ?? []).reversed())
-            root.append(AttributedString(parsed[range]), path: path[...])
+            let content = AttributedString(parsed[range])
+            if path.isEmpty {
+                // Foundation leaves raw HTML blocks without a block intent. Keep their literal source in order.
+                root.children.append(MarkdownBlock(id: -1 - root.children.count, kind: .paragraph, content: content))
+            } else {
+                root.append(content, path: path[...])
+            }
         }
         return root.children.isEmpty && !text.isEmpty
             ? [MarkdownBlock(id: 0, kind: .paragraph, content: AttributedString(text))] : root.children

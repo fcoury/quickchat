@@ -35,10 +35,67 @@ final class PasteTests: XCTestCase {
         Layout guide — https://example.com/layout
         """
         XCTAssertEqual(board.string(forType: .string), expected)
+        XCTAssertEqual(board.pasteboardItems?.count, 1)
+        let html = try XCTUnwrap(board.string(forType: .html))
+        XCTAssertTrue(html.contains("<strong>You:</strong>"))
+        XCTAssertTrue(html.contains("<p>[Screenshot, 640 × 480]</p>"))
+        XCTAssertTrue(html.contains("<pre><code>layout()\n</code></pre>"))
+        XCTAssertTrue(html.contains("<a href=\"https://example.com/layout\">Layout guide</a>"))
+        XCTAssertFalse(html.contains(archived.draft))
         XCTAssertEqual(store.selectedID, active.id)
         let empty = try XCTUnwrap(store.chats.first(where: { $0.messages.isEmpty }))
         XCTAssertFalse(store.copyConversation(empty.id, to: board))
         XCTAssertEqual(board.string(forType: .string), expected)
+    }
+
+    @MainActor func testReplyCopiesMarkdownAndSemanticHTMLOnOneItem() throws {
+        let markdown = """
+        ### Update
+
+        **Ready** with *emphasis*, ~~removed~~, `a < b` and [docs](https://example.com/).
+
+        3. First
+           - Nested
+
+        > Quoted
+
+        ```swift
+          x < y
+        ```
+
+        | Name | Value |
+        | --- | --- |
+        | One | 2 |
+        """
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        XCTAssertTrue(ChatClipboard(reply: Message(role: "assistant", text: markdown)).write(to: board))
+        XCTAssertEqual(board.pasteboardItems?.count, 1)
+        let item = try XCTUnwrap(board.pasteboardItems?.first)
+        XCTAssertEqual(item.string(forType: .string), markdown)
+        let html = try XCTUnwrap(item.string(forType: .html))
+        for fragment in ["<h3>Update</h3>", "<strong>Ready</strong>", "<em>emphasis</em>",
+                         "<s>removed</s>", "<code>a &lt; b</code>", "<a href=\"https://example.com/\">docs</a>",
+                         "<ol start=\"3\"><li>", "<ul><li>", "<blockquote>", "<pre><code>  x &lt; y\n</code></pre>",
+                         "<th>Name</th>", "<td>2</td>"] {
+            XCTAssertTrue(html.contains(fragment), "Missing \(fragment) in \(html)")
+        }
+    }
+
+    func testRichTranscriptKeepsTurnsSeparateAndEscapesUntrustedContent() {
+        var chat = Conversation()
+        chat.title = "<Title>"
+        chat.messages = [
+            Message(role: "assistant", text: "Literal HTML:\n\n<script>hello()</script>\n\n![diagram](https://example.com/tracker) [bad](javascript:alert)\n\n```\nunfinished"),
+            Message(role: "user", text: "**literal**\n<tag> & text"),
+        ]
+        let html = ChatClipboard(conversation: chat).html
+        XCTAssertTrue(html.contains("&lt;Title&gt;"))
+        XCTAssertTrue(html.contains("&lt;script&gt;hello()&lt;/script&gt;"))
+        XCTAssertTrue(html.contains("diagram"))
+        XCTAssertFalse(html.contains("https://example.com/tracker"))
+        XCTAssertFalse(html.contains("href=\"javascript:"))
+        XCTAssertTrue(html.contains("</code></pre>\n<p><strong>You:</strong></p>\n<p>**literal**<br>&lt;tag&gt; &amp; text</p>"))
     }
 
     @MainActor func testImageOnlyClipboardEnablesPasteAndDeliversPNG() async throws {

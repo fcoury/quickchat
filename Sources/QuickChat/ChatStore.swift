@@ -87,21 +87,7 @@ import QuickChatCore
     @discardableResult
     func copyConversation(_ id: UUID?, to pasteboard: NSPasteboard = .general) -> Bool {
         guard let chat = chats.first(where: { $0.id == id }), !chat.messages.isEmpty else { return false }
-        let turns = chat.messages.map { message in
-            let speaker = message.role == "user" ? "You" : message.role.capitalized
-            var parts = ["\(speaker):"]
-            for attachment in message.attachments {
-                parts.append("[Screenshot, \(attachment.width) × \(attachment.height)]")
-            }
-            if !message.text.isEmpty { parts.append(message.text) }
-            if let error = message.error { parts.append(error) }
-            for citation in message.citations {
-                if let url = citation.safeURL { parts.append("\(citation.title) — \(url.absoluteString)") }
-            }
-            return parts.joined(separator: "\n")
-        }
-        pasteboard.clearContents()
-        guard pasteboard.setString(([chat.title] + turns).joined(separator: "\n\n"), forType: .string) else {
+        guard ChatClipboard(conversation: chat).write(to: pasteboard) else {
             error = "Could not copy the conversation to the clipboard."
             return false
         }
