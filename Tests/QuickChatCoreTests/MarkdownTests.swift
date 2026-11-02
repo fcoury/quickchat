@@ -62,6 +62,43 @@ final class MarkdownTests: XCTestCase {
         }
     }
 
+    @MainActor func testEmbeddedImageRendersPixelsBetweenTextInReply() async throws {
+        _ = NSApplication.shared
+        // A 24 × 12 magenta PNG, embedded so the pixel test works offline.
+        let png = "iVBORw0KGgoAAAANSUhEUgAAABgAAAAMCAIAAAD3UuoiAAAAF0lEQVR4nGP4z/CfKohh1KBRg0YNwocA42c93yUGs4UAAAAASUVORK5CYII="
+        let markdown = "Before ![sample](data:image/png;base64," + png + ") After"
+        let host = NSHostingView(rootView: MarkdownText(text: markdown, fontSize: 15)
+            .padding().frame(width: 480).fixedSize(horizontal: false, vertical: true).foregroundStyle(.white).background(.black))
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 480, height: 260),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        panel.contentView = host
+        defer { panel.contentView = nil }
+        for _ in 0..<25 {
+            try await Task.sleep(for: .milliseconds(50))
+            host.layoutSubtreeIfNeeded()
+            let snapshot = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: snapshot)
+            let data = try XCTUnwrap(snapshot.representation(using: .png, properties: [:]))
+            if let directory = ProcessInfo.processInfo.environment["QUICKCHAT_RENDER_EVIDENCE_DIR"] {
+                try data.write(to: URL(fileURLWithPath: directory).appendingPathComponent("reply-image.png"))
+            }
+            let pixels = try XCTUnwrap(NSBitmapImageRep(data: data))
+            if let c = pixels.colorAt(x: pixels.pixelsWide / 2, y: pixels.pixelsHigh / 2)?.usingColorSpace(.sRGB),
+               c.redComponent > 0.8, c.blueComponent > 0.8, c.greenComponent < 0.45 { return }
+        }
+        XCTFail("No fixture image pixels appeared in the rendered reply")
+    }
+
+    func testLinkedReplyImageKeepsItsSourceAndDestination() throws {
+        let source = "Look [![Chart](https://example.org/chart.png)](https://example.org/report) and `![literal](x)`"
+        let content = try XCTUnwrap(MarkdownBlock.parse(source).first?.content)
+        let image = try XCTUnwrap(content.runs.first { $0.imageURL != nil })
+        XCTAssertEqual(String(content[image.range].characters), "Chart")
+        XCTAssertEqual(image.imageURL?.absoluteString, "https://example.org/chart.png")
+        XCTAssertEqual(image.link?.absoluteString, "https://example.org/report")
+        XCTAssertTrue(content.runs.contains { $0.imageURL == nil && $0.inlinePresentationIntent?.contains(.code) == true })
+    }
+
     func testHeadingsInlineStylesAndNestedListsHaveSeparateBlocks() throws {
         let blocks = MarkdownBlock.parse("### A heading\n\nA **bold** word and `inline code`.\n\n3. First\n   - Nested\n4. Second\n\n> A quote")
         XCTAssertEqual(blocks.count, 4)

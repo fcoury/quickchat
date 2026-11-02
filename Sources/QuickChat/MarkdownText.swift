@@ -9,8 +9,20 @@ struct MarkdownBlock: Identifiable {
     var children: [MarkdownBlock] = []
 
     static func parse(_ text: String) -> [MarkdownBlock] {
-        guard let parsed = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .full)) else {
+        let hasImages = text.contains("![")
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full, appliesSourcePositionAttributes: hasImages)
+        guard var parsed = try? AttributedString(markdown: text, options: options) else {
             return [MarkdownBlock(id: 0, kind: .paragraph, content: AttributedString(text))]
+        }
+        if hasImages {
+            // Foundation retains only the outer link on a linked image. Parse the
+            // original image span to recover its URL without guessing from the alt text.
+            for run in parsed.runs where run.link != nil && run.imageURL == nil {
+                guard let position = run.markdownSourcePosition, let range = Range(position, in: text),
+                      text[range].hasPrefix("!["), let image = try? AttributedString(markdown: String(text[range])),
+                      let url = image.runs.first?.imageURL else { continue }
+                parsed[run.range].imageURL = url
+            }
         }
         var root = MarkdownBlock(id: 0, kind: .paragraph)
         for (intent, range) in parsed.runs[\.presentationIntent] {
@@ -107,7 +119,25 @@ private struct MarkdownBlockView: View {
             ForEach(block.children) { MarkdownBlockView(block: $0, fontSize: fontSize) }
         }
     }
-    private func prose(_ value: AttributedString, size: CGFloat? = nil, weight: Font.Weight = .regular) -> some View {
+    @ViewBuilder private func prose(_ value: AttributedString, size: CGFloat? = nil, weight: Font.Weight = .regular) -> some View {
+        if value.runs.contains(where: { $0.imageURL != nil }) {
+            let spans = Array(value.runs[\.imageURL])
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(spans.indices, id: \.self) { index in
+                    let (imageURL, range) = spans[index]
+                    if let url = imageURL {
+                        MarkdownImage(url: url, alt: String(value[range].characters), link: value[range].link)
+                    } else {
+                        styledText(AttributedString(value[range]), size: size, weight: weight)
+                    }
+                }
+            }
+        } else {
+            styledText(value, size: size, weight: weight)
+        }
+    }
+
+    private func styledText(_ value: AttributedString, size: CGFloat?, weight: Font.Weight) -> some View {
         let pointSize = size ?? fontSize
         var styled = value
         for run in value.runs where run.inlinePresentationIntent?.contains(.code) == true {
