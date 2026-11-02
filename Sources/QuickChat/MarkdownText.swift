@@ -98,7 +98,7 @@ private struct MarkdownBlockView: View {
                                     .padding(.horizontal, 14).padding(.vertical, 10)
                                     .frame(maxWidth: .infinity, alignment: Alignment(horizontal: columnAlignment(index, columns: columns), vertical: .center))
                                     .gridColumnAlignment(columnAlignment(index, columns: columns))
-                                    .background(row.kind == .tableHeaderRow ? Theme.surface : .clear)
+                                    .background(row.kind == .tableHeaderRow ? Theme.surface : .clear, in: Rectangle())
                                     .overlay(alignment: .bottom) {
                                         if row.id != block.children.last?.id { Rectangle().fill(Theme.border).frame(height: 1) }
                                     }
