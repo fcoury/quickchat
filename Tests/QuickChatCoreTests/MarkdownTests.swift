@@ -127,6 +127,51 @@ final class MarkdownTests: XCTestCase {
         XCTAssertTrue(String(partial.content.characters).contains("let value = \"still streaming"))
     }
 
+    func testTableColumnsFitDescriptionsAndAllowWideTablesToScroll() throws {
+        let sample = """
+        | Project | What makes it tasteful |
+        | --- | --- |
+        | Glow | Restraint. Readable Markdown, considered spacing, quiet colors and deliberate typography. |
+        | Soft Serve | Cohesion. A Git server with a deliberately designed interface. |
+        """
+        let table = try XCTUnwrap(MarkdownBlock.parse(sample).first)
+        for fontSize: CGFloat in [15, 26] {
+            let widths = TableColumnWidths.calculate(rows: table.children, columnCount: 2, fontSize: fontSize, availableWidth: 500)
+            XCTAssertEqual(widths.count, 2)
+            XCTAssertLessThanOrEqual(widths.reduce(0, +), 501)
+            XCTAssertLessThan(widths[0], widths[1], "Short labels should leave room for the description")
+        }
+        let manyColumns = TableColumnWidths.calculate(rows: [], columnCount: 8, fontSize: 15, availableWidth: 500)
+        XCTAssertGreaterThan(manyColumns.reduce(0, +), 500, "Wide tables need a scrollable minimum width")
+        let unbroken = try XCTUnwrap(MarkdownBlock.parse("| Name | Value |\n| --- | --- |\n| Long | " + String(repeating: "W", count: 120) + " |").first)
+        let longWidths = TableColumnWidths.calculate(rows: unbroken.children, columnCount: 2, fontSize: 15, availableWidth: 300)
+        XCTAssertGreaterThan(longWidths.reduce(0, +), 300, "A long unbroken value should retain room to scroll")
+    }
+
+    @MainActor func testTableDescriptionsWrapInNarrowContainer() async throws {
+        _ = NSApplication.shared
+        let markdown = "| Project | What makes it tasteful |\n| --- | --- |\n| Glow | Restraint. Readable Markdown, considered spacing, quiet colors and deliberate typography make the experience clear. |"
+        let host = NSHostingView(rootView: MarkdownText(text: markdown, fontSize: 15)
+            .frame(width: 400).fixedSize(horizontal: false, vertical: true)
+            .foregroundStyle(.white).background(Theme.background).environment(\.colorScheme, .dark))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 400), styleMask: .borderless, backing: .buffered, defer: false)
+        host.frame = NSRect(x: 0, y: 0, width: 400, height: 400)
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        host.setFrameSize(NSSize(width: 400, height: 400))
+        defer { window.orderOut(nil) }
+        for _ in 0..<5 { host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(50)) }
+        XCTAssertEqual(host.fittingSize.width, 400, accuracy: 1)
+        XCTAssertGreaterThan(host.fittingSize.height, 130, "Long descriptions should wrap within the viewport, not offscreen")
+        if let directory = ProcessInfo.processInfo.environment["QUICKCHAT_RENDER_EVIDENCE_DIR"] {
+            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+            try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+            try data.write(to: URL(fileURLWithPath: directory).appendingPathComponent("table-wrap.png"))
+        }
+    }
+
     func testTableHeadersAlignmentAndLinksRemainStructured() throws {
         let block = try XCTUnwrap(MarkdownBlock.parse("| Name | Value |\n| --- | ---: |\n| [Docs](https://example.com) | 42 |").first)
         guard case .table(let columns) = block.kind else { return XCTFail("Expected a table") }

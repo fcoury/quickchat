@@ -89,29 +89,51 @@ private struct MarkdownBlockView: View {
         case .thematicBreak:
             Rectangle().fill(Theme.border).frame(height: 1).padding(.vertical, 6)
         case .table(let columns):
+            table(columns: columns)
+        default:
+            children
+        }
+    }
+
+    @State private var tableViewportWidth: CGFloat = 0
+
+    private func table(columns: [PresentationIntent.TableColumn]) -> some View {
+        let widths = TableColumnWidths.calculate(rows: block.children, columnCount: columns.count,
+                                                 fontSize: fontSize, availableWidth: tableViewportWidth)
+        let totalWidth = widths.reduce(0, +)
+        return VStack(alignment: .leading, spacing: 4) {
+            if tableViewportWidth > 0 && totalWidth > tableViewportWidth + 1 {
+                Label("Scroll", systemImage: "arrow.left.and.right")
+                    .font(.system(size: 11)).foregroundStyle(Theme.muted)
+                    .accessibilityLabel("Table scrolls horizontally")
+            }
             ScrollView(.horizontal) {
                 Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
                     ForEach(block.children) { row in
                         GridRow {
                             ForEach(Array(row.children.enumerated()), id: \.element.id) { index, cell in
-                                prose(cell.content, weight: row.kind == .tableHeaderRow ? .semibold : .regular)
-                                    .padding(.horizontal, 14).padding(.vertical, 10)
-                                    .frame(maxWidth: .infinity, alignment: Alignment(horizontal: columnAlignment(index, columns: columns), vertical: .center))
-                                    .gridColumnAlignment(columnAlignment(index, columns: columns))
-                                    .background(row.kind == .tableHeaderRow ? Theme.surface : .clear)
-                                    .overlay(alignment: .bottom) {
-                                        if row.id != block.children.last?.id { Rectangle().fill(Theme.border).frame(height: 1) }
-                                    }
+                                if widths.indices.contains(index) {
+                                    prose(cell.content, weight: row.kind == .tableHeaderRow ? .semibold : .regular)
+                                        .frame(maxWidth: .infinity, alignment: Alignment(horizontal: columnAlignment(index, columns: columns), vertical: .center))
+                                        .padding(.horizontal, 14).padding(.vertical, 10)
+                                        .frame(width: widths[index], alignment: Alignment(horizontal: columnAlignment(index, columns: columns), vertical: .center))
+                                        .gridColumnAlignment(columnAlignment(index, columns: columns))
+                                        .background(row.kind == .tableHeaderRow ? Theme.surface : .clear, in: Rectangle())
+                                }
                             }
                         }
+                        if row.id != block.children.last?.id {
+                            Rectangle().fill(Theme.border).frame(height: 1)
+                                .gridCellColumns(columns.count).gridCellUnsizedAxes(.horizontal)
+                        }
                     }
-                }.fixedSize(horizontal: true, vertical: false)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border))
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.border))
             }
-        default:
-            children
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { tableViewportWidth = $0 }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var children: some View {
@@ -159,6 +181,35 @@ private struct MarkdownBlockView: View {
         case .right: return .trailing
         default: return .leading
         }
+    }
+}
+
+/// Keeps short columns compact and gives remaining space to columns with more text.
+struct TableColumnWidths {
+    static func calculate(rows: [MarkdownBlock], columnCount: Int, fontSize: CGFloat, availableWidth: CGFloat) -> [CGFloat] {
+        guard columnCount > 0 else { return [] }
+        var ideal = Array(repeating: CGFloat(0), count: columnCount)
+        var minimum = Array(repeating: max(72, fontSize * 3) + 28, count: columnCount)
+        for row in rows {
+            let font = NSFont.systemFont(ofSize: fontSize, weight: row.kind == .tableHeaderRow ? .semibold : .regular)
+            for (index, cell) in row.children.enumerated() where index < columnCount {
+                let text = String(cell.content.characters)
+                let attributes: [NSAttributedString.Key: Any] = [.font: font]
+                ideal[index] = max(ideal[index], min(720, (text as NSString).size(withAttributes: attributes).width + 28))
+                let longestWord = text.split(whereSeparator: \.isWhitespace).map {
+                    (String($0) as NSString).size(withAttributes: attributes).width
+                }.max() ?? 0
+                minimum[index] = max(minimum[index], min(600, longestWord + 28))
+            }
+        }
+        ideal = zip(ideal, minimum).map(max)
+        let minTotal = minimum.reduce(0, +)
+        guard availableWidth > 0 else { return ideal }
+        guard minTotal < availableWidth else { return minimum }
+        let idealTotal = ideal.reduce(0, +)
+        guard idealTotal > availableWidth else { return ideal }
+        let fraction = (availableWidth - minTotal) / (idealTotal - minTotal)
+        return zip(minimum, ideal).map { $0 + ($1 - $0) * fraction }
     }
 }
 
