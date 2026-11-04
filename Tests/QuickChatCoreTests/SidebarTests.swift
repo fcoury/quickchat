@@ -96,6 +96,53 @@ final class SidebarTests: XCTestCase {
         XCTAssertEqual(state.scrollToBottomRequest, requested)
     }
 
+    @MainActor private func scrollView(in view: NSView) -> NSScrollView? {
+        if let scroll = view as? NSScrollView { return scroll }
+        return view.subviews.lazy.compactMap { self.scrollView(in: $0) }.first
+    }
+
+    @MainActor func testShortFollowUpAfterTallReplyAddsLessThanOneScreen() async throws {
+        _ = NSApplication.shared
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ChatStore(demo: true, history: HistoryStore(root: directory))
+        await store.load()
+        let auth = AuthService(preview: true)
+        let panel = ChatPanel(contentRect: NSRect(x: 0, y: 0, width: 680, height: 353),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        let host = NSHostingView(rootView: TranscriptView(store: store, auth: auth, window: WindowState(), fontSize: 15))
+        panel.contentView = host
+        defer { panel.contentView = nil }
+
+        func settle() async throws {
+            host.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(200))
+            host.layoutSubtreeIfNeeded()
+        }
+        try await settle()
+        store.chats[0].messages[1].text = (1...40).map { index in
+            "### Stop \(index)\n\nThe train crosses the river before arriving at the village station."
+        }.joined(separator: "\n\n")
+        try await settle()
+        let scroll = try XCTUnwrap(scrollView(in: host))
+        let document = try XCTUnwrap(scroll.documentView)
+        let initialHeight = document.bounds.height
+        let viewportHeight = scroll.contentSize.height
+        XCTAssertGreaterThan(initialHeight, 5 * viewportHeight)
+
+        store.send(auth: auth) // Send the short follow-up draft provided by demo mode.
+        try await settle()
+        XCTAssertEqual(store.current?.messages.count, 4)
+        // A short question and reply fit in one viewport. Extra pages here are blank,
+        // even when the scroll view correctly reports that it is pinned to the bottom.
+        XCTAssertLessThan(document.bounds.height - initialHeight, viewportHeight)
+        for _ in 0..<50 where store.busy { try await Task.sleep(for: .milliseconds(100)) }
+        try await settle()
+        XCTAssertFalse(store.busy)
+        XCTAssertLessThan(document.bounds.height - initialHeight, viewportHeight)
+        XCTAssertEqual(scroll.documentVisibleRect.maxY, document.bounds.maxY, accuracy: 2)
+    }
+
     @MainActor func testJumpReachesActualBottomOfLongTranscript() async throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("QuickChat-ScrollTests-\(UUID())")
@@ -121,10 +168,6 @@ final class SidebarTests: XCTestCase {
             host.layoutSubtreeIfNeeded()
             try await Task.sleep(for: .milliseconds(300))
             host.layoutSubtreeIfNeeded()
-        }
-        func scrollView(in view: NSView) -> NSScrollView? {
-            if let scroll = view as? NSScrollView { return scroll }
-            return view.subviews.lazy.compactMap { scrollView(in: $0) }.first
         }
         try await settle()
         let scroll = try XCTUnwrap(scrollView(in: host))

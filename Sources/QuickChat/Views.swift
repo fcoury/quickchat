@@ -266,14 +266,15 @@ struct TranscriptView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 0) {
-                        LazyVStack(alignment: .leading, spacing: 26) {
+                        // Measure every message so scrolling to the bottom of a follow-up
+                        // uses the actual height of earlier, potentially much taller replies.
+                        VStack(alignment: .leading, spacing: 26) {
                             ForEach(store.current?.messages ?? []) { message in
                                 MessageView(message: message, history: store.history, fontSize: fontSize, canRetry: message.id == store.current?.messages.last?.id && !store.busy,
                                     searching: store.searching && store.runningID == store.selectedID) { store.retry(auth: auth) }
                             }
                         }
                         .frame(maxWidth: 960).padding(.horizontal, 26).padding(.top, 26).frame(maxWidth: .infinity)
-                        // Keep the destination outside the lazy stack so its frame includes final layout and bottom padding.
                         Color.clear.frame(height: 26).id("bottom")
                     }
                     .onGeometryChange(for: CGRect.self) { geometry in
